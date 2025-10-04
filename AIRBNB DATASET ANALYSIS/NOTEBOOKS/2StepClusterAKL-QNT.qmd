@@ -1,0 +1,1548 @@
+---
+title: "2_STEP-CLUSTERING_AKL"
+format: html
+editor: Rohan Chawla
+---
+
+# **Libraries for Data Manipulation, Statistical Analysis, and Clustering**
+
+```{r}
+library(dplyr)
+library(purrr)
+library(lubridate)
+library(stringr)
+install.packages("plotly")
+library(plotly)
+
+install.packages("statip")
+library(statip)
+
+# Define a custom Mode function
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+# Install and load the clustering libraries
+#install.packages("clustMixType")
+#install.packages("cluster")
+
+library(clustMixType)
+library(cluster)
+ 
+```
+
+# **Importing and Filtering Airbnb Listing Data by Selected Columns**
+
+```{r}
+# Define the columns to keep
+keep_cols <- c(
+  "id","last_scraped","description","host_since","host_response_time","host_response_rate",
+  "host_acceptance_rate","host_is_superhost","property_type","room_type","accommodates",
+  "bathrooms","bedrooms","amenities","price","minimum_nights","maximum_nights",
+  "has_availability","availability_30","number_of_reviews","number_of_reviews_ltm",
+  "estimated_revenue_l365d","review_scores_rating","review_scores_accuracy",
+  "review_scores_cleanliness","review_scores_checkin","review_scores_communication",
+  "review_scores_location","review_scores_value","instant_bookable","region_parent_name",
+  "reviews_per_month"
+)
+
+library(dplyr)  # for %>%
+
+# Use the project folder as root, then the subfolder with CSVs
+library(dplyr)
+
+# Since your working dir is already .../bnb2_Segmentation
+base_dir <- getwd()  
+
+# Optional sanity check
+list.files(base_dir, pattern = "\\.csv$")
+
+# (optional sanity checks)
+# normalizePath(base_dir)
+# file.exists(file.path(base_dir, "july24.csv"))
+
+# Read and filter each file safely (only keep existing columns)
+july24_listings  <- read.csv(file.path(base_dir, "july24.csv"))  %>% select(any_of(keep_cols))
+aug24_listings   <- read.csv(file.path(base_dir, "aug24.csv"))   %>% select(any_of(keep_cols))
+sept24_listings  <- read.csv(file.path(base_dir, "sept24.csv"))  %>% select(any_of(keep_cols))
+oct24_listings   <- read.csv(file.path(base_dir, "oct24.csv"))   %>% select(any_of(keep_cols))
+nov24_listings   <- read.csv(file.path(base_dir, "nov24.csv"))   %>% select(any_of(keep_cols))
+dec24_listings   <- read.csv(file.path(base_dir, "dec24.csv"))   %>% select(any_of(keep_cols))
+jan25_listings   <- read.csv(file.path(base_dir, "jan25.csv"))   %>% select(any_of(keep_cols))
+feb25_listings   <- read.csv(file.path(base_dir, "feb25.csv"))   %>% select(any_of(keep_cols))
+march25_listings <- read.csv(file.path(base_dir, "march25.csv")) %>% select(any_of(keep_cols))
+april25_listings <- read.csv(file.path(base_dir, "april25.csv")) %>% select(any_of(keep_cols))
+may25_listings   <- read.csv(file.path(base_dir, "may25.csv"))   %>% select(any_of(keep_cols))
+june25_listings  <- read.csv(file.path(base_dir, "june25.csv"))  %>% select(any_of(keep_cols))
+
+
+```
+
+# Data Loading**, Selecting, and Combining Monthly Airbnb Listings**
+
+```{r}
+
+# Define the columns to keep
+keep_cols <- c(
+  "id","last_scraped","description","host_since","host_response_time","host_response_rate",
+  "host_acceptance_rate","host_is_superhost","property_type","room_type","accommodates",
+  "bathrooms","bedrooms","amenities","price","minimum_nights","maximum_nights",
+  "has_availability","availability_30","number_of_reviews","number_of_reviews_ltm",
+  "review_scores_rating","review_scores_accuracy",
+  "review_scores_cleanliness","review_scores_checkin","review_scores_communication",
+  "review_scores_location","review_scores_value","instant_bookable","region_parent_name",
+  "reviews_per_month"
+)
+
+# File paths
+files <- c(
+  "july24.csv","aug24.csv","sept24.csv","oct24.csv","nov24.csv","dec24.csv",
+  "jan25.csv","feb25.csv","march25.csv","april25.csv","may25.csv","june25.csv"
+)
+
+# Add full path
+files <- file.path("/Users/pratikganguli/Downloads/bnb2_Segmentation", files)
+
+# Function to safely read + select
+read_and_select <- function(file) {
+  read.csv(file, stringsAsFactors = FALSE) %>% 
+    select(any_of(keep_cols)) %>%
+    mutate(id = as.character(id))  # ensure id is character
+}
+library(dplyr)   # %>%
+library(purrr)   # map()
+
+# Read all and store in a list (named by file)
+# point to the folder that already shows in your Files pane
+base_dir <- getwd()
+
+# pick just the 12 month files in that folder
+files <- list.files(
+  base_dir,
+  pattern = "^(july24|aug24|sept24|oct24|nov24|dec24|jan25|feb25|march25|april25|may25|june25)\\.csv$",
+  full.names = TRUE
+)
+
+# helper to read + select
+read_and_select <- function(file) {
+  read.csv(file, stringsAsFactors = FALSE) %>%
+    select(any_of(keep_cols)) %>%
+    mutate(id = as.character(id))
+}
+
+# read all into a named list
+all_listings <- files %>%
+  set_names(nm = tools::file_path_sans_ext(basename(.))) %>%
+  map(read_and_select)
+
+# (optional) one big data frame with source_file column
+combined_listings <- bind_rows(all_listings, .id = "source_file")
+
+
+# Optionally bind them into one big dataframe
+combined_listings <- bind_rows(all_listings, .id = "source_file")
+
+str(combined_listings)
+
+colSums(is.na(combined_listings))
+```
+
+# **Filtering and Inspecting Auckland Listings**
+
+```{r}
+auckland_listings <- combined_listings %>%
+  filter(region_parent_name == "Auckland")
+
+str(auckland_listings)
+
+colSums(is.na(auckland_listings))
+
+sum(is.na(auckland_listings))
+```
+
+# Data Cleaning & Feature Engineering
+
+```{r}
+library(stringr)   # for str_replace_all, str_length, str_count
+library(lubridate) # for ymd, interval, years
+
+# Basic cleaning
+auckland_listings <- auckland_listings %>%
+  
+  # 1️⃣ Convert price to numeric
+  mutate(price = as.numeric(str_replace_all(price, "[$,]", ""))) %>%
+  
+  # 2️⃣ Convert host_since to numeric years as host
+  mutate(
+    # Convert last_scraped to date
+    last_scraped_date = ymd(last_scraped),
+    
+    # Compute years as host relative to last_scraped
+    host_since_years = ifelse(
+      host_since != "",
+      as.numeric(interval(ymd(host_since), last_scraped_date) / years(1)),
+      NA
+    )
+  ) %>%
+  
+  # 3️⃣ Convert t/f columns to 0/1 numeric
+  mutate(
+    host_is_superhost = ifelse(host_is_superhost %in% c("t","TRUE"), 1, 0),
+    instant_bookable  = ifelse(instant_bookable  %in% c("t","TRUE"), 1, 0),
+    has_availability  = ifelse(has_availability  %in% c("t","TRUE"), 1, 0)
+  ) %>%
+  
+  # 4️⃣ Create simple numeric features from text
+  mutate(
+    description_length = str_length(description),
+    amenities_count    = str_count(amenities, ",") + 1
+  )
+
+# Check structure
+str(auckland_listings)
+
+```
+
+# IMPUTATION OF THE MISSING VALUES
+
+```{r}
+
+# Columns to impute
+num_cols <- c(
+  "bathrooms","bedrooms","review_scores_rating","review_scores_accuracy",
+  "review_scores_cleanliness","review_scores_checkin","review_scores_communication",
+  "review_scores_location","review_scores_value","reviews_per_month", "price", "host_since_years"
+)
+
+# Compute global medians (fallback)
+global_medians <- auckland_listings %>%
+  summarise(across(all_of(num_cols), ~ median(., na.rm = TRUE)))
+
+# Impute
+auckland_listings <- auckland_listings %>%
+  group_by(id) %>%
+  mutate(across(all_of(num_cols), ~ ifelse(
+    is.na(.), 
+    ifelse(sum(!is.na(.)) > 0, mean(., na.rm = TRUE), global_medians[[cur_column()]]),
+    .
+  ))) %>%
+  ungroup()
+
+colSums(is.na(auckland_listings))
+
+str(auckland_listings)
+
+summary(auckland_listings)
+
+```
+
+# MORE CLEANING &. IMPUTATION : Encode Categorical Host Data & Prepare Cluster Dataset
+
+```{r}
+
+auckland_listings <- auckland_listings %>%
+  # Convert host_response_time to numeric
+  mutate(host_response_time_num = case_when(
+    host_response_time == "within an hour" ~ 1,
+    host_response_time == "within a few hours" ~ 2,
+    host_response_time == "within a day" ~ 3,
+    host_response_time == "more than a day" ~ 4,
+    TRUE ~ NA_real_  # N/A or missing
+  )) %>%
+  # Convert percentages to numeric
+  mutate(
+    host_response_rate_num = as.numeric(str_remove(host_response_rate, "%")),
+    host_acceptance_rate_num = as.numeric(str_remove(host_acceptance_rate, "%"))
+  )
+
+
+# Simple mode function
+get_mode <- function(x) {
+  ux <- unique(x[!is.na(x)])
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+# Global values for fallback
+global_mode <- get_mode(auckland_listings$host_response_time_num)
+global_mean_rate <- mean(auckland_listings$host_response_rate_num, na.rm = TRUE)
+global_mean_accept <- mean(auckland_listings$host_acceptance_rate_num, na.rm = TRUE)
+
+# Impute missing values
+auckland_listings <- auckland_listings %>%
+  group_by(id) %>%
+  mutate(
+    host_response_time_num = ifelse(is.na(host_response_time_num), global_mode, host_response_time_num),
+    host_response_rate_num = ifelse(is.na(host_response_rate_num), global_mean_rate, host_response_rate_num),
+    host_acceptance_rate_num = ifelse(is.na(host_acceptance_rate_num), global_mean_accept, host_acceptance_rate_num)
+  ) %>%
+  ungroup()
+
+colSums(is.na(auckland_listings))
+
+str(auckland_listings)
+
+summary(auckland_listings)
+
+auckland_cluster <- auckland_listings %>%
+  select(-c(
+    host_response_time, 
+    host_response_rate, 
+    host_acceptance_rate,
+    host_since,
+    description,
+    amenities,
+    last_scraped
+  ))
+
+str(auckland_cluster)
+```
+
+# Aggregate Listings by ID & Finalizing Categorical Features
+
+```{r}
+# For mfv() = most frequent value (mode)
+if (!requireNamespace("statip", quietly = TRUE)) install.packages("statip")
+library(statip)
+
+# (optional safety: if mfv isn't in scope for any reason)
+if (!exists("mfv")) {
+  mfv <- function(x) {
+    x <- x[!is.na(x)]
+    if (length(x) == 0) return(NA)
+    statip::mfv(x)[1]
+  }
+}
+
+# Aggregate listings by 'id'
+auckland_cluster_agg <- auckland_cluster %>%
+  group_by(id) %>%
+  summarise(
+    host_is_superhost        = max(host_is_superhost, na.rm = TRUE),
+    property_type            = mfv(property_type),      # mode
+    room_type                = mfv(room_type),          # mode
+    accommodates             = mean(accommodates, na.rm = TRUE),
+    bathrooms                = mean(bathrooms, na.rm = TRUE),
+    bedrooms                 = mean(bedrooms, na.rm = TRUE),
+    price                    = mean(price, na.rm = TRUE),
+    minimum_nights           = mean(minimum_nights, na.rm = TRUE),
+    maximum_nights           = mean(maximum_nights, na.rm = TRUE),
+    has_availability         = max(has_availability, na.rm = TRUE),
+    availability_30          = mean(availability_30, na.rm = TRUE),
+    number_of_reviews        = mean(number_of_reviews, na.rm = TRUE),
+    number_of_reviews_ltm    = mean(number_of_reviews_ltm, na.rm = TRUE),
+    review_scores_rating     = mean(review_scores_rating, na.rm = TRUE),
+    review_scores_accuracy   = mean(review_scores_accuracy, na.rm = TRUE),
+    review_scores_cleanliness= mean(review_scores_cleanliness, na.rm = TRUE),
+    review_scores_checkin    = mean(review_scores_checkin, na.rm = TRUE),
+    review_scores_communication = mean(review_scores_communication, na.rm = TRUE),
+    review_scores_location   = mean(review_scores_location, na.rm = TRUE),
+    review_scores_value      = mean(review_scores_value, na.rm = TRUE),
+    instant_bookable         = max(instant_bookable, na.rm = TRUE),
+    region_parent_name       = mfv(region_parent_name), # mode
+    reviews_per_month        = mean(reviews_per_month, na.rm = TRUE),
+    last_scraped_date        = max(last_scraped_date, na.rm = TRUE),
+    host_since_years         = mean(host_since_years, na.rm = TRUE),
+    description_length       = mean(description_length, na.rm = TRUE),
+    amenities_count          = mean(amenities_count, na.rm = TRUE),
+    host_response_time_num   = mean(host_response_time_num, na.rm = TRUE),
+    host_response_rate_num   = mean(host_response_rate_num, na.rm = TRUE),
+    host_acceptance_rate_num = mean(host_acceptance_rate_num, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+str(auckland_cluster_agg)
+summary(auckland_cluster_agg)
+
+
+table(auckland_cluster_agg$property_type)
+
+auckland_cluster_agg <- auckland_cluster_agg %>%
+  mutate(property_type_group = case_when(
+    grepl("^Entire", property_type) ~ "Entire place",
+    grepl("^Private room", property_type) ~ "Private room",
+    grepl("^Shared room", property_type) ~ "Shared room",
+    TRUE ~ "Unique / Other"
+  ))
+
+table(auckland_cluster_agg$property_type_group)
+
+
+table(auckland_cluster_agg$room_type)
+
+# Convert categorical variables to factors
+auckland_cluster_agg$property_type_group <- as.factor(auckland_cluster_agg$property_type_group)
+auckland_cluster_agg$room_type <- as.factor(auckland_cluster_agg$room_type)
+
+auckland_cluster_agg <- auckland_cluster_agg %>%
+  mutate(
+    host_is_superhost = factor(host_is_superhost, levels = c(0,1), labels = c("No","Yes")),
+    instant_bookable  = factor(instant_bookable,  levels = c(0,1), labels = c("No","Yes")),
+    property_type     = as.factor(property_type)
+  )  
+
+str(auckland_cluster_agg)
+summary(auckland_cluster_agg)
+colSums(is.na(auckland_cluster_agg))
+
+
+```
+
+# K-Prototypes Clustering & Silhouette Analysis - Auckland
+
+```{r}
+
+# -----------------     S I L 0.56   ------------------------------------
+# Select the variables you want for clustering
+# Use numeric + categorical columns
+clust_data <- auckland_cluster_agg %>%
+  dplyr::select(
+    host_is_superhost,
+    property_type_group,
+    room_type,
+    accommodates,
+    bathrooms,
+    bedrooms,
+    price,
+    reviews_per_month,
+    amenities_count,
+    instant_bookable
+  )
+
+# For k-prototypes on mixed data
+if (!requireNamespace("clustMixType", quietly = TRUE)) install.packages("clustMixType")
+library(clustMixType)
+
+# For Gower distance + silhouette (you already use these later)
+if (!requireNamespace("cluster", quietly = TRUE)) install.packages("cluster")
+library(cluster)
+
+
+# Run k-prototypes clustering (2-step equivalent)
+set.seed(123) # for reproducibility
+kpres <- kproto(clust_data, k = 2)  # you can adjust k = 3,4,5 based on silhouette or business sense
+
+# Cluster results
+auckland_cluster_agg$cluster <- kpres$cluster
+
+# Check cluster sizes
+table(auckland_cluster_agg$cluster)
+
+# Optional: cluster summary
+summary(kpres)
+
+# Cluster centers
+View(kpres$centers)
+
+# Compute Gower distance for silhouette (works with mixed data)
+gower_dist <- daisy(clust_data, metric = "gower")
+
+# Silhouette
+sil <- silhouette(kpres$cluster, gower_dist)
+mean(sil[, 3])
+summary(sil)
+plot(sil, border = NA)
+
+
+
+# ---------------------------- S I L 0.79 -------------------------------------------------
+
+# Use numeric + categorical columns
+clust_data <- auckland_cluster_agg %>%
+  dplyr::select(
+    property_type_group,
+    room_type,
+    accommodates,
+    bedrooms,
+    price,
+    reviews_per_month,
+    amenities_count
+  )
+# Run k-prototypes clustering (2-step equivalent)
+set.seed(123) # for reproducibility
+kpres <- kproto(clust_data, k = 2)  # you can adjust k = 3,4,5 based on silhouette or business sense
+
+# Cluster results
+auckland_cluster_agg$cluster <- kpres$cluster
+
+# Check cluster sizes
+table(auckland_cluster_agg$cluster)
+
+# Optional: cluster summary
+summary(kpres)
+
+# Cluster centers
+View(kpres$centers)
+
+# Compute Gower distance for silhouette (works with mixed data)
+gower_dist <- daisy(clust_data, metric = "gower")
+
+# Silhouette
+sil <- silhouette(kpres$cluster, gower_dist)
+mean(sil[, 3])
+summary(sil)
+plot(sil, border = NA)
+
+
+
+# ---------------------------- S I L 0.8 -------------------------------------------------
+
+
+# Use numeric + categorical columns
+clust_data <- auckland_cluster_agg %>%
+  dplyr::select(
+    property_type_group,
+    room_type,
+    accommodates,
+    bedrooms,
+    price,
+    amenities_count,
+    number_of_reviews
+  )
+# Run k-prototypes clustering (2-step equivalent)
+set.seed(123) # for reproducibility
+kpres <- kproto(clust_data, k = 2)  # you can adjust k = 3,4,5 based on silhouette or business sense
+
+# Cluster results
+auckland_cluster_agg$cluster <- kpres$cluster
+
+# Check cluster sizes
+table(auckland_cluster_agg$cluster)
+
+# Optional: cluster summary
+summary(kpres)
+
+# Cluster centers
+View(kpres$centers)
+
+# Compute Gower distance for silhouette (works with mixed data)
+gower_dist <- daisy(clust_data, metric = "gower")
+
+# Silhouette
+sil <- silhouette(kpres$cluster, gower_dist)
+mean(sil[, 3])
+summary(sil)
+plot(sil, border = NA)
+
+
+
+# ----------------------------- S I L 0.73 -------------------------------------------------
+
+
+
+# Use numeric + categorical columns
+clust_data <- auckland_cluster_agg %>%
+  dplyr::select(
+    property_type_group,
+    room_type,
+    accommodates,
+    bedrooms,
+    price,
+    amenities_count,
+    number_of_reviews,
+    minimum_nights,
+    host_response_rate_num,
+    description_length
+  )
+# Run k-prototypes clustering (2-step equivalent)
+set.seed(123) # for reproducibility
+kpres <- kproto(clust_data, k = 2)  # you can adjust k = 3,4,5 based on silhouette or business sense
+
+# Cluster results
+auckland_cluster_agg$cluster <- kpres$cluster
+
+# Check cluster sizes
+table(auckland_cluster_agg$cluster)
+
+# Optional: cluster summary
+summary(kpres)
+
+# Cluster centers
+View(kpres$centers)
+
+# Compute Gower distance for silhouette (works with mixed data)
+gower_dist <- daisy(clust_data, metric = "gower")
+
+# Silhouette
+sil <- silhouette(kpres$cluster, gower_dist)
+mean(sil[, 3])
+summary(sil)
+plot(sil, border = NA)
+
+# ------------------------ **** S I L 0.8/0.63 **** ------------------------------------
+
+# Use numeric + categorical columns
+clust_data <- auckland_cluster_agg %>%
+  dplyr::select(
+    room_type,
+    accommodates,
+    bedrooms,
+    price,
+    amenities_count,
+    number_of_reviews,
+    minimum_nights,
+    host_response_rate_num,
+    description_length,
+    )
+# Run k-prototypes clustering (2-step equivalent)
+set.seed(123) # for reproducibility
+kpres <- kproto(clust_data, k = 2)  # you can adjust k = 3,4,5 based on silhouette or business sense
+
+# Cluster results
+auckland_cluster_agg$cluster <- kpres$cluster
+
+# Check cluster sizes
+table(auckland_cluster_agg$cluster)
+
+# Optional: cluster summary
+summary(kpres)
+
+# Cluster centers
+View(kpres$centers)
+
+# Compute Gower distance for silhouette (works with mixed data)
+gower_dist <- daisy(clust_data, metric = "gower")
+
+# Silhouette
+sil <- silhouette(kpres$cluster, gower_dist)
+mean(sil[, 3])
+summary(sil)
+plot(sil, border = NA)
+
+
+# -------------------------------  *** S I L 0.52-3k-rt *** --------------------------------
+
+# Use numeric + categorical columns
+clust_data <- auckland_cluster_agg %>%
+  dplyr::select(
+    room_type,
+    accommodates,
+    bedrooms,
+    price,
+    amenities_count,
+    number_of_reviews,
+    minimum_nights,
+    host_response_rate_num,
+    description_length
+  )
+# Run k-prototypes clustering (2-step equivalent)
+set.seed(123) # for reproducibility
+kpres <- kproto(clust_data, k = 3)  # you can adjust k = 3,4,5 based on silhouette or business sense
+
+# Cluster results
+auckland_cluster_agg$cluster <- kpres$cluster
+
+# Check cluster sizes
+table(auckland_cluster_agg$cluster)
+
+# Optional: cluster summary
+summary(kpres)
+
+# Cluster centers
+View(kpres$centers)
+
+# Compute Gower distance for silhouette (works with mixed data)
+gower_dist <- daisy(clust_data, metric = "gower")
+
+# Silhouette
+sil <- silhouette(kpres$cluster, gower_dist)
+mean(sil[, 3])
+summary(sil)
+plot(sil, border = NA)
+
+```
+
+# Final Clustering Model: k-Prototypes + 3D Visualization.  S I L 0.57-3k \*\*\*FINAL MODEL - AKL\*\*\*
+
+```{r}
+# Use numeric + categorical columns
+clust_data <- auckland_cluster_agg %>%
+  dplyr::select(
+    room_type,
+    accommodates,
+    price,
+    amenities_count,
+    minimum_nights,
+    description_length,
+    number_of_reviews_ltm,
+  )
+# Run k-prototypes clustering (2-step equivalent)
+set.seed(123) # for reproducibility
+kpres <- kproto(clust_data, k = 3)  # you can adjust k = 3,4,5 based on silhouette or business sense
+
+# Cluster results
+auckland_cluster_agg$cluster <- kpres$cluster
+
+# Check cluster sizes
+table(auckland_cluster_agg$cluster)
+
+# Optional: cluster summary
+summary(kpres)
+
+# Compute Gower distance for silhouette (works with mixed data)
+gower_dist <- daisy(clust_data, metric = "gower")
+
+# Silhouette
+sil <- silhouette(kpres$cluster, gower_dist)
+mean(sil[, 3])
+# Cluster centers
+View(kpres$centers)
+
+
+library(factoextra)
+library(clustMixType)
+library(FactoMineR)   # for PCA on mixed data (FAMD)
+library(plotly)
+
+# Step 1: Run PCA/FAMD for mixed data (since you have numeric + categorical)
+# FAMD (Factor Analysis of Mixed Data) handles both numeric & categorical
+famd_res <- FAMD(clust_data, ncp = 3, graph = FALSE)
+
+# Step 2: Get coordinates for first 3 dimensions
+df_pca <- famd_res$ind$coord[, 1:3]
+
+# Step 3: 3D plot with clusters from kproto
+plot_ly(x = df_pca[,1], 
+        y = df_pca[,2], 
+        z = df_pca[,3],
+        color = as.factor(kpres$cluster),
+        type = "scatter3d", 
+        mode = "markers") %>%
+  layout(scene = list(
+    xaxis = list(title = "Dim 1"),
+    yaxis = list(title = "Dim 2"),
+    zaxis = list(title = "Dim 3")
+  ))
+
+
+```
+
+# Filter and Inspect Queenstown Listings
+
+```{r}
+queenstown_listings <- combined_listings %>%
+  filter(region_parent_name == "Queenstown-Lakes District")
+
+str(queenstown_listings)
+
+colSums(is.na(queenstown_listings))
+
+sum(is.na(queenstown_listings))
+
+na2<-sum(is.na(queenstown_listings))
+
+```
+
+# Basic Cleaning and Feature Engineering for Queenstown Listings
+
+```{r}
+queenstown_listings <- queenstown_listings %>%
+  
+  # 1️⃣ Convert price to numeric
+  mutate(price = as.numeric(str_replace_all(price, "[$,]", ""))) %>%
+  
+  # 2️⃣ Convert host_since to numeric years as host
+  mutate(
+    last_scraped_date = ymd(last_scraped),
+    host_since_years = ifelse(
+      host_since != "",
+      as.numeric(interval(ymd(host_since), last_scraped_date) / years(1)),
+      NA
+    )
+  ) %>%
+  
+  # 3️⃣ Convert t/f columns to 0/1 numeric
+  mutate(
+    host_is_superhost = ifelse(host_is_superhost %in% c("t","TRUE"), 1, 0),
+    instant_bookable  = ifelse(instant_bookable  %in% c("t","TRUE"), 1, 0),
+    has_availability  = ifelse(has_availability  %in% c("t","TRUE"), 1, 0)
+  ) %>%
+  
+  # 4️⃣ Create simple numeric features from text
+  mutate(
+    description_length = str_length(description),
+    amenities_count    = str_count(amenities, ",") + 1
+  )
+
+# Check structure
+str(queenstown_listings)
+```
+
+# Imputation of Missing Numeric Values for Queenstown Listings
+
+```{r}
+# Columns to impute (keep same column names for alignment)
+num_cols_qt <- c(
+  "bathrooms","bedrooms","review_scores_rating","review_scores_accuracy",
+  "review_scores_cleanliness","review_scores_checkin","review_scores_communication",
+  "review_scores_location","review_scores_value","reviews_per_month", "price"
+)
+
+# Compute global medians (fallback)
+global_medians_qt <- queenstown_listings %>%
+  summarise(across(all_of(num_cols_qt), ~ median(., na.rm = TRUE)))
+
+# Impute missing values
+queenstown_listings <- queenstown_listings %>%
+  group_by(id) %>%
+  mutate(across(all_of(num_cols_qt), ~ ifelse(
+    is.na(.), 
+    ifelse(sum(!is.na(.)) > 0, mean(., na.rm = TRUE), global_medians_qt[[cur_column()]]),
+    .
+  ))) %>%
+  ungroup()
+
+# Checks
+colSums(is.na(queenstown_listings))
+str(queenstown_listings)
+summary(queenstown_listings)
+```
+
+# Conversion and Imputation of Host Response & Acceptance Features for Queenstown Listings
+
+```{r}
+queenstown_listings <- queenstown_listings %>%
+  mutate(host_response_time_qt = case_when(
+    host_response_time == "within an hour" ~ 1,
+    host_response_time == "within a few hours" ~ 2,
+    host_response_time == "within a day" ~ 3,
+    host_response_time == "more than a day" ~ 4,
+    TRUE ~ NA_real_
+  )) %>%
+  mutate(
+    host_response_rate_qt = as.numeric(str_remove(host_response_rate, "%")),
+    host_acceptance_rate_qt = as.numeric(str_remove(host_acceptance_rate, "%"))
+  )
+
+
+# Simple mode function (can reuse)
+get_mode <- function(x) {
+  ux <- unique(x[!is.na(x)])
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+# Global values for fallback - Queenstown
+global_mode_qt <- get_mode(queenstown_listings$host_response_time_qt)
+global_mean_rate_qt <- mean(queenstown_listings$host_response_rate_qt, na.rm = TRUE)
+global_mean_accept_qt <- mean(queenstown_listings$host_acceptance_rate_qt, na.rm = TRUE)
+
+# Impute missing values - Queenstown
+queenstown_listings <- queenstown_listings %>%
+  group_by(id) %>%
+  mutate(
+    host_response_time_qt = ifelse(is.na(host_response_time_qt), global_mode_qt, host_response_time_qt),
+    host_response_rate_qt = ifelse(is.na(host_response_rate_qt), global_mean_rate_qt, host_response_rate_qt),
+    host_acceptance_rate_qt = ifelse(is.na(host_acceptance_rate_qt), global_mean_accept_qt, host_acceptance_rate_qt)
+  ) %>%
+  ungroup()
+
+# Checks
+colSums(is.na(queenstown_listings))
+str(queenstown_listings)
+summary(queenstown_listings)
+
+
+queenstown_cluster <- queenstown_listings %>%
+  select(-c(
+    host_response_time,      # already converted to numeric _qt
+    host_response_rate,      # already converted to numeric _qt
+    host_acceptance_rate,    # already converted to numeric _qt
+    host_since,
+    description,
+    amenities,
+    last_scraped
+  ))
+
+str(queenstown_cluster)
+```
+
+# Aggregation and Feature Engineering for Queenstown Listings
+
+```{r}
+queenstown_cluster_agg <- queenstown_cluster %>%
+  group_by(id) %>%
+  summarise(
+    host_is_superhost        = max(host_is_superhost, na.rm = TRUE),
+    property_type            = mfv(property_type),     
+    room_type                = mfv(room_type),         
+    accommodates             = mean(accommodates, na.rm = TRUE),
+    bathrooms                = mean(bathrooms, na.rm = TRUE),
+    bedrooms                 = mean(bedrooms, na.rm = TRUE),
+    price                    = mean(price, na.rm = TRUE),
+    minimum_nights           = mean(minimum_nights, na.rm = TRUE),
+    maximum_nights           = mean(maximum_nights, na.rm = TRUE),
+    has_availability         = max(has_availability, na.rm = TRUE),
+    availability_30          = mean(availability_30, na.rm = TRUE),
+    number_of_reviews        = mean(number_of_reviews, na.rm = TRUE),
+    number_of_reviews_ltm    = mean(number_of_reviews_ltm, na.rm = TRUE),
+    review_scores_rating     = mean(review_scores_rating, na.rm = TRUE),
+    review_scores_accuracy   = mean(review_scores_accuracy, na.rm = TRUE),
+    review_scores_cleanliness= mean(review_scores_cleanliness, na.rm = TRUE),
+    review_scores_checkin    = mean(review_scores_checkin, na.rm = TRUE),
+    review_scores_communication = mean(review_scores_communication, na.rm = TRUE),
+    review_scores_location   = mean(review_scores_location, na.rm = TRUE),
+    review_scores_value      = mean(review_scores_value, na.rm = TRUE),
+    instant_bookable         = max(instant_bookable, na.rm = TRUE),
+    region_parent_name       = mfv(region_parent_name), 
+    reviews_per_month        = mean(reviews_per_month, na.rm = TRUE),
+    last_scraped_date        = max(last_scraped_date, na.rm = TRUE),
+    host_since_years         = mean(host_since_years, na.rm = TRUE),
+    description_length       = mean(description_length, na.rm = TRUE),
+    amenities_count          = mean(amenities_count, na.rm = TRUE),
+    host_response_time_qt    = mean(host_response_time_qt, na.rm = TRUE),
+    host_response_rate_qt    = mean(host_response_rate_qt, na.rm = TRUE),
+    host_acceptance_rate_qt  = mean(host_acceptance_rate_qt, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+str(queenstown_cluster_agg)
+summary(queenstown_cluster_agg)
+
+
+
+queenstown_cluster_agg <- queenstown_cluster_agg %>%
+  mutate(property_type_group_qt = case_when(
+    grepl("^Entire", property_type) ~ "Entire place",
+    grepl("^Private room", property_type) ~ "Private room",
+    grepl("^Shared room", property_type) ~ "Shared room",
+    TRUE ~ "Unique / Other"
+  ))
+table(queenstown_cluster_agg$property_type_group_qt)
+
+
+queenstown_cluster_agg$property_type_group_qt <- as.factor(queenstown_cluster_agg$property_type_group_qt)
+queenstown_cluster_agg$room_type <- as.factor(queenstown_cluster_agg$room_type)
+
+queenstown_cluster_agg <- queenstown_cluster_agg %>%
+  mutate(
+    host_is_superhost = factor(host_is_superhost, levels = c(0,1), labels = c("No","Yes")),
+    instant_bookable  = factor(instant_bookable,  levels = c(0,1), labels = c("No","Yes")),
+    property_type     = as.factor(property_type)
+  )  
+
+str(queenstown_cluster_agg)
+summary(queenstown_cluster_agg)
+colSums(is.na(queenstown_cluster_agg))
+```
+
+# K-Prototypes Clustering for Queenstown Listings
+
+```{r}
+
+# Install and load the package if not already
+#install.packages("clustMixType")
+library(clustMixType)
+
+
+# -----------------     S I L 0.29-k3 - 0.3-k2 — QUEENSTOWN -----------------------------
+library(dplyr)
+library(cluster)   # for daisy() silhouette
+library(clustMixType) # for k-prototypes
+
+clust_data_qt <- queenstown_cluster_agg %>%
+  dplyr::select(
+    host_is_superhost,
+    property_type,
+    accommodates,
+    bathrooms,
+    price,
+    amenities_count,
+    instant_bookable
+  )
+
+# Run k-prototypes clustering
+set.seed(123)
+kpres_qt <- kproto(clust_data_qt, k = 3)
+
+# Assign clusters
+queenstown_cluster_agg$cluster_qt <- kpres_qt$cluster
+
+# Check cluster sizes
+table(queenstown_cluster_agg$cluster_qt)
+
+# Optional: cluster summary
+summary(kpres_qt)
+
+# Cluster centers
+View(kpres_qt$centers)
+
+# Compute Gower distance & silhouette
+gower_dist_qt <- daisy(clust_data_qt, metric = "gower")
+sil_qt <- silhouette(kpres_qt$cluster, gower_dist_qt)
+mean(sil_qt[, 3])
+summary(sil_qt)
+plot(sil_qt, border = NA)
+
+
+# -----------------     S I L 0.28 — QUEENSTOWN ------------------------------------
+
+
+
+clust_data_qt <- queenstown_cluster_agg %>%
+    select(
+      host_is_superhost,
+      property_type,
+      accommodates,
+      bathrooms,
+      price,
+      amenities_count,
+      instant_bookable,
+      number_of_reviews,
+      )
+
+# Run k-prototypes clustering
+set.seed(123)
+kpres_qt <- kproto(clust_data_qt, k = 3)
+
+# Assign clusters
+queenstown_cluster_agg$cluster_qt <- kpres_qt$cluster
+
+# Check cluster sizes
+table(queenstown_cluster_agg$cluster_qt)
+
+# Optional: cluster summary
+summary(kpres_qt)
+
+
+
+# Compute Gower distance & silhouette
+gower_dist_qt <- daisy(clust_data_qt, metric = "gower")
+sil_qt <- silhouette(kpres_qt$cluster, gower_dist_qt)
+mean(sil_qt[, 3])
+# Cluster centers
+View(kpres_qt$centers)
+
+summary(sil_qt)
+plot(sil_qt, border = NA)
+
+
+# -----------------    ** S I L 0.33 - k4-— QUEENSTOWN ** ------------------------------------
+
+
+
+clust_data_qt <- queenstown_cluster_agg %>%
+  select(
+    host_is_superhost,
+    property_type,
+    accommodates,
+    price,
+    amenities_count,
+    instant_bookable,
+    number_of_reviews,
+    
+    )
+
+# Run k-prototypes clustering
+set.seed(123)
+kpres_qt <- kproto(clust_data_qt, k = 4)
+
+# Assign clusters
+queenstown_cluster_agg$cluster_qt <- kpres_qt$cluster
+
+# Check cluster sizes
+table(queenstown_cluster_agg$cluster_qt)
+
+# Optional: cluster summary
+summary(kpres_qt)
+
+
+
+# Compute Gower distance & silhouette
+gower_dist_qt <- daisy(clust_data_qt, metric = "gower")
+sil_qt <- silhouette(kpres_qt$cluster, gower_dist_qt)
+mean(sil_qt[, 3])
+# Cluster centers
+View(kpres_qt$centers)
+
+summary(sil_qt)
+plot(sil_qt, border = NA)
+
+
+# ----------------- ******* S I L — 0.44-4k QUEENSTOWN ******------------------------------------
+
+
+
+clust_data_qt <- queenstown_cluster_agg %>%
+  select(
+    host_is_superhost,
+    accommodates,
+    price,
+    amenities_count,
+    #instant_bookable,
+    number_of_reviews,
+    #host_since_years,
+    )
+
+# Run k-prototypes clustering
+set.seed(123)
+kpres_qt <- kproto(clust_data_qt, k = 3)
+
+# Assign clusters
+queenstown_cluster_agg$cluster_qt <- kpres_qt$cluster
+
+# Check cluster sizes
+table(queenstown_cluster_agg$cluster_qt)
+
+# Optional: cluster summary
+summary(kpres_qt)
+
+
+
+# Compute Gower distance & silhouette
+gower_dist_qt <- daisy(clust_data_qt, metric = "gower")
+sil_qt <- silhouette(kpres_qt$cluster, gower_dist_qt)
+mean(sil_qt[, 3])
+# Cluster centers
+View(kpres_qt$centers)
+
+summary(sil_qt)
+plot(sil_qt, border = NA)
+
+
+
+# ----------------- ******* S I L — 0.53-k4  QUEENSTOWN ******------------------------------------
+
+
+
+clust_data_qt <- queenstown_cluster_agg %>%
+  select(
+    host_is_superhost,
+    accommodates,
+    price,
+    amenities_count,
+    instant_bookable,
+    number_of_reviews,
+    host_since_years,
+    bathrooms,
+  )
+
+# Run k-prototypes clustering
+set.seed(123)
+kpres_qt <- kproto(clust_data_qt, k = 4)
+
+# Assign clusters
+queenstown_cluster_agg$cluster_qt <- kpres_qt$cluster
+
+# Check cluster sizes
+table(queenstown_cluster_agg$cluster_qt)
+
+# Optional: cluster summary
+summary(kpres_qt)
+
+
+
+# Compute Gower distance & silhouette
+gower_dist_qt <- daisy(clust_data_qt, metric = "gower")
+sil_qt <- silhouette(kpres_qt$cluster, gower_dist_qt)
+mean(sil_qt[, 3])
+# Cluster centers
+View(kpres_qt$centers)
+
+summary(sil_qt)
+plot(sil_qt, border = NA)
+
+
+# -----------------  S I L — 0.66 -k4/k2  QUEENSTOWN ------------------------------------
+
+
+
+clust_data_qt <- queenstown_cluster_agg %>%
+  select(
+    host_is_superhost,
+    accommodates,
+    price,
+    amenities_count,
+    instant_bookable,
+    number_of_reviews
+  )
+
+# Run k-prototypes clustering
+set.seed(123)
+kpres_qt <- kproto(clust_data_qt, k = 4)
+
+# Assign clusters
+queenstown_cluster_agg$cluster_qt <- kpres_qt$cluster
+
+# Check cluster sizes
+table(queenstown_cluster_agg$cluster_qt)
+
+# Optional: cluster summary
+summary(kpres_qt)
+
+
+
+# Compute Gower distance & silhouette
+gower_dist_qt <- daisy(clust_data_qt, metric = "gower")
+sil_qt <- silhouette(kpres_qt$cluster, gower_dist_qt)
+mean(sil_qt[, 3])
+# Cluster centers
+View(kpres_qt$centers)
+
+summary(sil_qt)
+plot(sil_qt, border = NA)
+
+# -----------------  S I L — 0.77 -k4  QUEENSTOWN ------------------------------------
+
+
+
+clust_data_qt <- queenstown_cluster_agg %>%
+  select(
+    host_is_superhost,
+    price,
+    amenities_count,
+    instant_bookable,
+    number_of_reviews
+      )
+
+# Run k-prototypes clustering
+set.seed(123)
+kpres_qt <- kproto(clust_data_qt, k = 4)
+
+# Assign clusters
+queenstown_cluster_agg$cluster_qt <- kpres_qt$cluster
+
+# Check cluster sizes
+table(queenstown_cluster_agg$cluster_qt)
+
+# Optional: cluster summary
+summary(kpres_qt)
+
+
+
+# Compute Gower distance & silhouette
+gower_dist_qt <- daisy(clust_data_qt, metric = "gower")
+sil_qt <- silhouette(kpres_qt$cluster, gower_dist_qt)
+mean(sil_qt[, 3])
+# Cluster centers
+View(kpres_qt$centers)
+
+summary(sil_qt)
+plot(sil_qt, border = NA)
+
+
+# -----------------  S I L — 0. -k4  QUEENSTOWN ------------------------------------
+
+
+
+clust_data_qt <- queenstown_cluster_agg %>%
+  select(
+    host_is_superhost,
+    accommodates,
+    amenities_count,
+    price,
+    number_of_reviews,
+    host_since_years,
+    host_acceptance_rate_qt
+  )
+
+# Run k-prototypes clustering
+set.seed(123)
+kpres_qt <- kproto(clust_data_qt, k = 3)
+
+# Assign clusters
+queenstown_cluster_agg$cluster_qt <- kpres_qt$cluster
+
+# Check cluster sizes
+table(queenstown_cluster_agg$cluster_qt)
+
+# Optional: cluster summary
+summary(kpres_qt)
+
+
+
+# Compute Gower distance & silhouette
+gower_dist_qt <- daisy(clust_data_qt, metric = "gower")
+sil_qt <- silhouette(kpres_qt$cluster, gower_dist_qt)
+mean(sil_qt[, 3])
+# Cluster centers
+View(kpres_qt$centers)
+
+summary(sil_qt)
+plot(sil_qt, border = NA)
+
+
+# ----------------- ******* S I L — 0.63-4k QUEENSTOWN ******----------------------------
+
+
+
+clust_data_qt <- queenstown_cluster_agg %>%
+  select(
+    host_is_superhost,
+    accommodates,
+    price,
+    amenities_count,
+    #instant_bookable,
+    number_of_reviews,
+    
+    host_since_years,
+  )
+
+# Run k-prototypes clustering
+set.seed(123)
+kpres_qt <- kproto(clust_data_qt, k = 3)
+
+# Assign clusters
+queenstown_cluster_agg$cluster_qt <- kpres_qt$cluster
+
+# Check cluster sizes
+table(queenstown_cluster_agg$cluster_qt)
+
+# Optional: cluster summary
+summary(kpres_qt)
+
+
+
+# Compute Gower distance & silhouette
+gower_dist_qt <- daisy(clust_data_qt, metric = "gower")
+sil_qt <- silhouette(kpres_qt$cluster, gower_dist_qt)
+mean(sil_qt[, 3])
+# Cluster centers
+View(kpres_qt$centers)
+
+summary(sil_qt)
+plot(sil_qt, border = NA)
+
+
+
+```
+
+# Final K-Prototypes Clustering – Queenstown Listings. SIL 0.45-5K \***FINAL MODEL - QUEENTSTOWN\***
+
+```{r}
+
+clust_data_qt <- queenstown_cluster_agg %>%
+select(
+  instant_bookable,
+  price,
+  host_is_superhost,
+  number_of_reviews_ltm,
+  amenities_count,
+  minimum_nights,
+  room_type,
+  description_length,
+  host_acceptance_rate_qt,
+  property_type_group_qt
+)
+
+# Run k-prototypes clustering
+set.seed(123)
+kpres_qt <- kproto(clust_data_qt, k = 5)
+
+# Assign clusters
+queenstown_cluster_agg$cluster_qt <- kpres_qt$cluster
+
+# Check cluster sizes
+table(queenstown_cluster_agg$cluster_qt)
+
+# Optional: cluster summary
+summary(kpres_qt)
+
+
+
+# Compute Gower distance & silhouette
+gower_dist_qt <- daisy(clust_data_qt, metric = "gower")
+sil_qt <- silhouette(kpres_qt$cluster, gower_dist_qt)
+mean(sil_qt[, 3])
+# Cluster centers
+View(kpres_qt$centers)
+
+summary(sil_qt)
+plot(sil_qt, border = NA)
+
+```
+
+# **3D Visualization of Queenstown Listings Clusters Using FAMD**
+
+```{r}
+library(FactoMineR)
+library(plotly)
+library(factoextra)
+library(clustMixType)
+
+# Step 1: FAMD for mixed data
+famd_res_qt <- FAMD(clust_data_qt, ncp = 3, graph = FALSE)
+
+# Step 2: Get coordinates for first 3 dimensions
+df_pca_qt <- famd_res_qt$ind$coord[, 1:3]
+
+# Step 3: 3D scatter plot with cluster coloring
+plot_ly(
+  x = df_pca_qt[,1],
+  y = df_pca_qt[,2],
+  z = df_pca_qt[,3],
+  color = as.factor(queenstown_cluster_agg$cluster_qt),
+  type = "scatter3d",
+  mode = "markers",
+  marker = list(size = 5)
+) %>%
+  layout(scene = list(
+    xaxis = list(title = "Dim 1"),
+    yaxis = list(title = "Dim 2"),
+    zaxis = list(title = "Dim 3")
+  ))
+```
+
+# **Descriptive Statistics and Summary Statistics for Auckland & Queenstown Listings**
+
+```{r}
+
+#A. Counts:
+nrow(combined_listings)
+length(unique(combined_listings$id))
+
+#Period coverage:
+range(combined_listings$last_scraped, na.rm = TRUE)
+
+#B.
+
+#Counts per city: 
+nrow(auckland_listings)
+nrow(queenstown_listings)
+
+#Unique listings per city: 
+length(unique(auckland_listings$id))
+length(unique(queenstown_listings$id))
+
+num_vars <- c("price","review_scores_rating","number_of_reviews_ltm",
+              "reviews_per_month","accommodates","bathrooms","bedrooms",
+              "amenities_count","host_response_rate_num","host_acceptance_rate_num",
+              "description_length")
+
+summary_akl <- auckland_cluster_agg |> 
+  dplyr::select(any_of(num_vars)) |> 
+  summarize(across(everything(),
+                   list(n = ~sum(!is.na(.)),
+                        mean = ~mean(., na.rm=TRUE),
+                        sd = ~sd(., na.rm=TRUE),
+                        min = ~min(., na.rm=TRUE),
+                        p25 = ~quantile(., .25, na.rm=TRUE),
+                        median = ~median(., na.rm=TRUE),
+                        p75 = ~quantile(., .75, na.rm=TRUE),
+                        max = ~max(., na.rm=TRUE))))
+
+print(summary_akl)
+
+
+num_vars <- c("price","review_scores_rating","number_of_reviews_ltm",
+              "reviews_per_month","accommodates","bathrooms","bedrooms",
+              "amenities_count","host_response_rate_num","host_acceptance_rate_num",
+              "description_length")
+
+summary_akl <- auckland_cluster_agg |> 
+  dplyr::select(any_of(num_vars)) |> 
+  summarize(across(everything(),
+                   list(n = ~sum(!is.na(.)),
+                        mean = ~mean(., na.rm=TRUE),
+                        sd = ~sd(., na.rm=TRUE),
+                        min = ~min(., na.rm=TRUE),
+                        p25 = ~quantile(., .25, na.rm=TRUE),
+                        median = ~median(., na.rm=TRUE),
+                        p75 = ~quantile(., .75, na.rm=TRUE),
+                        max = ~max(., na.rm=TRUE))))
+
+print(summary_akl)
+
+
+num_vars <- c("price","review_scores_rating","number_of_reviews_ltm",
+              "reviews_per_month","accommodates","bathrooms","bedrooms",
+              "amenities_count","host_response_rate_num","host_acceptance_rate_num",
+              "description_length")
+
+summary_qnt <- queenstown_cluster_agg |> 
+  dplyr::select(any_of(num_vars)) |> 
+  summarize(across(everything(),
+                   list(n = ~sum(!is.na(.)),
+                        mean = ~mean(., na.rm=TRUE),
+                        sd = ~sd(., na.rm=TRUE),
+                        min = ~min(., na.rm=TRUE),
+                        p25 = ~quantile(., .25, na.rm=TRUE),
+                        median = ~median(., na.rm=TRUE),
+                        p75 = ~quantile(., .75, na.rm=TRUE),
+                        max = ~max(., na.rm=TRUE))))
+
+print(summary_qnt)
+
+
+freq_akl_room <- prop.table(table(auckland_cluster_agg$room_type)) |> as.data.frame()
+freq_qtn_room <- prop.table(table(queenstown_cluster_agg$room_type)) |> as.data.frame()
+
+
+
+library(ggplot2)
+library(scales)
+
+#------------------------------
+# 1️⃣ Price Histograms
+#------------------------------
+
+# Define price limits for comparability
+price_limits <- c(0, max(c(auckland_listings$price, queenstown_listings$price), na.rm = TRUE))
+price_binwidth <- 50  # adjust as needed
+
+# Auckland Price
+p_akl_price <- ggplot(auckland_listings, aes(x = price)) +
+  geom_histogram(binwidth = price_binwidth, fill = "#1f77b4", color = "black") +
+  xlim(price_limits) +
+  labs(title = "Histogram of Price – Auckland", x = "Price (NZD)", y = "Count") +
+  theme_minimal()
+p_akl_price
+# Queenstown Price
+p_qtn_price <- ggplot(queenstown_listings, aes(x = price)) +
+  geom_histogram(binwidth = price_binwidth, fill = "#ff7f0e", color = "black") +
+  xlim(price_limits) +
+  labs(title = "Histogram of Price – Queenstown", x = "Price (NZD)", y = "Count") +
+  theme_minimal()
+p_qtn_price
+# Log-transformed Price
+p_akl_price_log <- ggplot(auckland_listings, aes(x = log1p(price))) +
+  geom_histogram(binwidth = 0.2, fill = "#1f77b4", color = "black") +
+  labs(title = "Histogram of Log(Price+1) – Auckland", x = "Log(Price+1)", y = "Count") +
+  theme_minimal()
+p_akl_price_log
+p_qtn_price_log <- ggplot(queenstown_listings, aes(x = log1p(price))) +
+  geom_histogram(binwidth = 0.2, fill = "#ff7f0e", color = "black") +
+  labs(title = "Histogram of Log(Price+1) – Queenstown", x = "Log(Price+1)", y = "Count") +
+  theme_minimal()
+p_qtn_price_log
+#------------------------------
+# 2️⃣ Amenities Count Histograms
+#------------------------------
+
+amen_limit <- c(0, max(c(auckland_listings$amenities_count, queenstown_listings$amenities_count), na.rm = TRUE))
+amen_binwidth <- 1
+
+p_akl_amen <- ggplot(auckland_listings, aes(x = amenities_count)) +
+  geom_histogram(binwidth = amen_binwidth, fill = "#1f77b4", color = "black") +
+  xlim(amen_limit) +
+  labs(title = "Histogram of Amenities Count – Auckland", x = "Amenities Count", y = "Count") +
+  theme_minimal()
+p_akl_amen
+p_qtn_amen <- ggplot(queenstown_listings, aes(x = amenities_count)) +
+  geom_histogram(binwidth = amen_binwidth, fill = "#ff7f0e", color = "black") +
+  xlim(amen_limit) +
+  labs(title = "Histogram of Amenities Count – Queenstown", x = "Amenities Count", y = "Count") +
+  theme_minimal()
+p_qtn_amen
+#------------------------------
+# 3️⃣ Review Scores Rating Histograms
+#------------------------------
+
+rating_limit <- c(0, 5)
+rating_binwidth <- 5
+
+
+p_akl_rating <- ggplot(auckland_listings, aes(x = review_scores_rating)) +
+  geom_histogram(binwidth = rating_binwidth, fill = "#1f77b4", color = "black") +
+  xlim(rating_limit) +
+  labs(title = "Histogram of Review Scores Rating – Auckland", x = "Review Score", y = "Count") +
+  theme_minimal()
+
+p_qtn_rating <- ggplot(queenstown_listings, aes(x = review_scores_rating)) +
+  geom_histogram(binwidth = rating_binwidth, fill = "#ff7f0e", color = "black") +
+  xlim(rating_limit) +
+  labs(title = "Histogram of Review Scores Rating – Queenstown", x = "Review Score", y = "Count") +
+  theme_minimal()
+
+
+
+```
