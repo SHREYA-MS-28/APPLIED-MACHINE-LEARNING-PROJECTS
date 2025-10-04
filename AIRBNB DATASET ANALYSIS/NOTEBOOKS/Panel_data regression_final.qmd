@@ -1,0 +1,660 @@
+---
+title: "panel_regression_bnb"
+author: "Rohan chawla"
+format: html
+editor: visual
+---
+
+#### Setting the working directory
+
+```{r}
+#| label: setup
+#| include: false
+knitr::opts_knit$set(root.dir = "~/Downloads")
+
+
+```
+
+#### Importing the Dataset
+
+```{r}
+#loading the datasets
+july<-read.csv("july.csv")
+august<-read.csv("august.csv")
+september<-read.csv("september.csv")
+october<-read.csv("october.csv")
+november<-read.csv("november.csv")
+december<-read.csv("december.csv")
+january<-read.csv("january.csv")
+february<-read.csv("february.csv")
+march<-read.csv("march.csv")
+april<-read.csv("april.csv")
+may<-read.csv("may.csv")
+june<-read.csv("june.csv")
+
+```
+
+#### Selecting the relevant variables
+
+```{r}
+library(dplyr)
+vars_to_keep <- c(
+  "id","host_response_time","host_response_rate","host_acceptance_rate",
+  "host_is_superhost","host_listings_count","property_type","room_type",
+  "accommodates","bathrooms","bedrooms","beds",
+  "price","minimum_nights","maximum_nights","minimum_nights_avg_ntm","maximum_nights_avg_ntm",
+  "has_availability","availability_30","availability_60","availability_90","availability_365",
+  "number_of_reviews","number_of_reviews_ltm","number_of_reviews_l30d",
+  "estimated_occupancy_l365d",
+  "review_scores_rating","review_scores_accuracy","review_scores_cleanliness",
+  "review_scores_checkin","review_scores_communication","review_scores_location","review_scores_value",
+  "instant_bookable","calculated_host_listings_count","calculated_host_listings_count_entire_homes",
+  "calculated_host_listings_count_private_rooms","calculated_host_listings_count_shared_rooms",
+  "region_name","region_parent_parent_name","reviews_per_month"
+)
+
+# Columns to drop (if present)
+cols_to_drop <- c("host_since","host_neighbourhood","amenities",
+                  "availability_eoy","number_of_reviews_ly")
+
+# Function to clean each dataset
+clean_dataset <- function(df) {
+  df %>%
+    select(any_of(vars_to_keep)) %>%   # keep only your chosen vars
+    select(-any_of(cols_to_drop))      # drop weak vars if they sneak in
+}
+
+# Apply to each month
+july      <- clean_dataset(july)
+august    <- clean_dataset(august)
+september <- clean_dataset(september)
+october   <- clean_dataset(october)
+november  <- clean_dataset(november)
+december  <- clean_dataset(december)
+january   <- clean_dataset(january)
+february  <- clean_dataset(february)
+march     <- clean_dataset(march)
+april     <- clean_dataset(april)
+may       <- clean_dataset(may)
+june      <- clean_dataset(june)
+
+str(march)
+
+
+#further removing the unwanted columns
+library(dplyr)
+
+# Columns to drop
+cols_to_drop2 <- c("has_availability",
+                   "region_parent_parent_name",
+                   "calculated_host_listings_count",
+                   "calculated_host_listings_count_entire_homes",
+                   "calculated_host_listings_count_private_rooms",
+                   "calculated_host_listings_count_shared_rooms")
+
+# Function to clean each dataset
+drop_extra_cols <- function(df) {
+  df %>% select(-any_of(cols_to_drop2))
+}
+
+# Apply to each dataset
+july      <- drop_extra_cols(july)
+august    <- drop_extra_cols(august)
+september <- drop_extra_cols(september)
+october   <- drop_extra_cols(october)
+november  <- drop_extra_cols(november)
+december  <- drop_extra_cols(december)
+january   <- drop_extra_cols(january)
+february  <- drop_extra_cols(february)
+march     <- drop_extra_cols(march)
+april     <- drop_extra_cols(april)
+may       <- drop_extra_cols(may)
+june      <- drop_extra_cols(june)
+
+```
+
+#### List view and overview
+
+```{r}
+monthly_dfs <- list(
+  July = july,
+  August = august,
+  September = september,
+  October = october,
+  November = november,
+  December = december,
+  January = january,
+  February = february,
+  March = march,
+  April = april,
+  May = may,
+  June = june
+)
+
+
+# Get column names for each dataset
+colnames_list <- lapply(monthly_dfs, names)
+
+# Find common columns across all months
+common_cols <- Reduce(intersect, colnames_list)
+
+# Find union of all columns
+all_cols <- Reduce(union, colnames_list)
+
+# Show which columns are missing from each month
+missing_cols <- lapply(colnames_list, function(cols) setdiff(all_cols, cols))
+
+# Print summary
+cat("Common columns across all months:", length(common_cols), "\n\n")
+print(common_cols)
+
+cat("\nExtra columns (not present in every dataset):\n")
+print(missing_cols)
+
+#further removing one more varaibles of estimated occupancy
+
+
+library(dplyr)
+
+monthly <- list(
+  July=july, August=august, September=september, October=october,
+  November=november, December=december, January=january, February=february,
+  March=march, April=april, May=may, June=june
+)
+
+# Drop the column if present
+monthly <- lapply(monthly, function(df) {
+  df %>% select(-any_of("estimated_occupancy_l365d"))
+})
+
+# Assign back
+july      <- monthly$July
+august    <- monthly$August
+september <- monthly$September
+october   <- monthly$October
+november  <- monthly$November
+december  <- monthly$December
+january   <- monthly$January
+february  <- monthly$February
+march     <- monthly$March
+april     <- monthly$April
+may       <- monthly$May
+june      <- monthly$June
+
+```
+
+#### cleaning of data
+
+```{r}
+sapply(monthly, ncol)
+
+#again checking for duplicate ids
+for (m in names(monthly)) {
+  df <- monthly[[m]]
+  id_counts <- table(as.character(df$id))     # treat id as text to avoid 7.7e+17 issues
+  dup_ids   <- sum(id_counts > 1)
+  max_rep   <- if (length(id_counts)) max(id_counts) else 0
+  cat(sprintf("Month: %-9s | unique IDs=%6d | duplicate IDs=%d | max repeats=%d\n",
+              m, length(unique(df$id)), dup_ids, max_rep))
+}
+monthly <- list(
+  July=july, August=august, September=september, October=october,
+  November=november, December=december, January=january, February=february,
+  March=march, April=april, May=may, June=june
+)
+
+# add month column, keep same 34 cols everywhere
+monthly <- lapply(names(monthly), function(m) {
+  df <- monthly[[m]]
+  df$month <- m
+  df
+})
+names(monthly) <- c("July","August","September","October","November","December",
+                    "January","February","March","April","May","June")
+
+
+```
+
+#### Panel Format {#sec-panel-format .illustration style="color:red"}
+
+```{r}
+bnb_panel <- dplyr::bind_rows(monthly)
+
+# order month as a proper ordered factor (Jul→Jun)
+bnb_panel$month <- factor(
+  bnb_panel$month,
+  levels = c("July","August","September","October","November","December",
+             "January","February","March","April","May","June"),
+  ordered = TRUE
+)
+
+# keep id as character to avoid 7.7e+17 issues
+bnb_panel$id <- as.character(bnb_panel$id)
+
+# quick sanity
+dim(bnb_panel)
+length(unique(bnb_panel$id))
+length(unique(interaction(bnb_panel$id, bnb_panel$month, drop = TRUE)))
+table(bnb_panel$month)
+
+# any duplicated id-month combos?
+dup_id_month <- bnb_panel %>%
+  count(id, month) %>%
+  filter(n > 1)
+
+nrow(dup_id_month)  # should be 0
+
+
+```
+
+#### Cleaning data types
+
+```{r}
+strip_pct <- function(x) as.numeric(gsub("%", "", ifelse(x %in% c("", "N/A"), NA, x)))
+strip_money <- function(x) as.numeric(gsub("[\\$,]", "", ifelse(x == "", NA, x)))
+
+bnb_panel <- bnb_panel %>%
+  mutate(
+    # target
+    price = strip_money(price),
+    
+    # response/acceptance rates
+    host_response_rate   = strip_pct(host_response_rate),
+    host_acceptance_rate = strip_pct(host_acceptance_rate),
+    
+    # booleans to 0/1
+    host_is_superhost  = ifelse(host_is_superhost %in% c("t", "T", TRUE), 1L,
+                                ifelse(host_is_superhost %in% c("f", "F", FALSE), 0L, NA_integer_)),
+    instant_bookable   = ifelse(instant_bookable %in% c("t", "T", TRUE), 1L,
+                                ifelse(instant_bookable %in% c("f", "F", FALSE), 0L, NA_integer_)),
+    
+    # make sure numerics are numeric
+    bathrooms = suppressWarnings(as.numeric(bathrooms)),
+    beds      = suppressWarnings(as.numeric(beds)),
+    
+    # tidy categorical vars
+    property_type = as.factor(property_type),
+    room_type     = as.factor(room_type),
+    region_name   = as.factor(region_name),
+    
+    #  order response-time categories
+    host_response_time = factor(
+      host_response_time,
+      levels = c("within an hour","within a few hours","within a day","a few days or more"),
+      ordered = TRUE
+    )
+  )
+str(bnb_panel)
+
+# ensure month is ordered facto
+bnb_panel$month <- factor(bnb_panel$month,
+                          levels = c("July","August","September","October","November","December",
+                                     "January","February","March","April","May","June"),
+                          ordered = TRUE)
+
+# optional: scale rates
+bnb_panel$host_response_rate   <- bnb_panel$host_response_rate / 100
+bnb_panel$host_acceptance_rate <- bnb_panel$host_acceptance_rate / 100
+
+#treat binaries as factors (interpretation-friendly)
+ bnb_panel$host_is_superhost <- factor(bnb_panel$host_is_superhost, levels=c(0,1), labels=c("No","Yes"))
+bnb_panel$instant_bookable  <- factor(bnb_panel$instant_bookable, levels=c(0,1), labels=c("No","Yes"))
+str(bnb_panel)
+
+
+```
+
+#### Keeping 8+ months data
+
+```{r}
+# Count how many unique months each id appears in
+id_month_counts <- bnb_panel %>%
+  group_by(id) %>%
+  summarise(months_present = n_distinct(month), .groups = "drop")
+
+# Keep only ids with >= 9 months of data
+ids_keep <- id_month_counts %>%
+  filter(months_present >= 9) %>%
+  pull(id)
+
+# Filter the panel
+bnb_panel_balanced <- bnb_panel %>%
+  filter(id %in% ids_keep)
+
+# Sanity check
+summary(id_month_counts$months_present)
+table(bnb_panel_balanced$month)     # counts by month
+mean(id_month_counts$months_present >= 9) # proportion of ids kept
+
+# Distribution of months_present for the kept IDs
+id_month_counts %>%
+  filter(months_present >= 9) %>%
+  count(months_present)
+
+
+```
+
+#### Missing values operation
+
+```{r}
+colSums(is.na(bnb_panel_balanced))
+#cleaning the price variable
+library(dplyr)
+
+bnb_panel_balanced <- bnb_panel_balanced %>%
+  group_by(id) %>%
+  mutate(
+    mean_price_per_id = mean(price, na.rm = TRUE),
+    price = ifelse(is.na(price), mean_price_per_id, price)
+  ) %>%
+  ungroup() %>%
+  select(-mean_price_per_id)  # clean up price column
+
+# Drop listings where all months had missing price (mean = NA)
+bnb_panel_balanced <- bnb_panel_balanced %>%
+  filter(!is.na(price))
+
+# Count missing values in each column
+colSums(is.na(bnb_panel_balanced))
+
+```
+
+#### Global Mean Imputation
+
+```{r}
+# 1) Global medians (fallbacks)
+global_meds <- bnb_panel_balanced %>%
+  summarise(
+    beds_gl_med      = median(beds, na.rm = TRUE),
+    bathrooms_gl_med = median(bathrooms, na.rm = TRUE),
+    bedrooms_gl_med  = median(bedrooms, na.rm = TRUE)
+  )
+
+# 2) Group-wise median imputation, then global fallback
+bnb_panel_balanced <- bnb_panel_balanced %>%
+  group_by(property_type, room_type) %>%
+  mutate(
+    beds      = ifelse(is.na(beds),      median(beds, na.rm = TRUE),      beds),
+    bathrooms = ifelse(is.na(bathrooms), median(bathrooms, na.rm = TRUE), bathrooms),
+    bedrooms  = ifelse(is.na(bedrooms),  median(bedrooms, na.rm = TRUE),  bedrooms)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    beds      = ifelse(is.na(beds),      global_meds$beds_gl_med,      beds),
+    bathrooms = ifelse(is.na(bathrooms), global_meds$bathrooms_gl_med, bathrooms),
+    bedrooms  = ifelse(is.na(bedrooms),  global_meds$bedrooms_gl_med,  bedrooms)
+  )
+
+# 3) Quick check remaining NAs
+colSums(is.na(bnb_panel_balanced[, c("beds","bathrooms","bedrooms")]))
+
+
+```
+
+#### Global mean imputation
+
+```{r}
+# Create a dummy flag for listings with no reviews
+bnb_panel_balanced <- bnb_panel_balanced %>%
+  mutate(no_reviews = ifelse(is.na(review_scores_rating), 1, 0))
+
+# Get global means for review scores
+global_means <- bnb_panel_balanced %>%
+  summarise(
+    across(starts_with("review_scores_"), ~ mean(.x, na.rm = TRUE))
+  )
+
+# Impute review scores with global means where missing
+bnb_panel_balanced <- bnb_panel_balanced %>%
+  mutate(
+    review_scores_rating        = ifelse(is.na(review_scores_rating),        global_means$review_scores_rating,        review_scores_rating),
+    review_scores_accuracy      = ifelse(is.na(review_scores_accuracy),      global_means$review_scores_accuracy,      review_scores_accuracy),
+    review_scores_cleanliness   = ifelse(is.na(review_scores_cleanliness),   global_means$review_scores_cleanliness,   review_scores_cleanliness),
+    review_scores_checkin       = ifelse(is.na(review_scores_checkin),       global_means$review_scores_checkin,       review_scores_checkin),
+    review_scores_communication = ifelse(is.na(review_scores_communication), global_means$review_scores_communication, review_scores_communication),
+    review_scores_location      = ifelse(is.na(review_scores_location),      global_means$review_scores_location,      review_scores_location),
+    review_scores_value         = ifelse(is.na(review_scores_value),         global_means$review_scores_value,         review_scores_value),
+    
+    # reviews_per_month → set missing to 0
+    reviews_per_month = ifelse(is.na(reviews_per_month), 0, reviews_per_month)
+  )
+
+# ✅ Check again
+colSums(is.na(bnb_panel_balanced[, c("reviews_per_month", grep("review_scores", names(bnb_panel_balanced), value = TRUE))]))
+
+```
+
+#### Global mode for categorical variables
+
+```{r}
+# Function to calculate mode
+get_mode <- function(x) {
+  ux <- na.omit(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+# List of categorical columns (update if needed)
+cat_cols <- c("host_response_time")  
+
+# Impute NAs in categorical columns with mode
+bnb_panel_balanced <- bnb_panel_balanced %>%
+  mutate(across(all_of(cat_cols), ~ ifelse(is.na(.), get_mode(.), .)))
+
+# Check missing again
+colSums(is.na(bnb_panel_balanced[cat_cols]))
+
+# --- Impute categorical vars with mode ---
+bnb_panel_balanced <- bnb_panel_balanced %>%
+  group_by(region_name) %>%
+  mutate(
+    host_response_time = ifelse(
+      is.na(host_response_time),
+      # mode by region
+      names(sort(table(host_response_time), decreasing = TRUE))[1],
+      host_response_time
+    )
+  ) %>%
+  ungroup()
+
+```
+
+#### Region Column median imputation
+
+```{r}
+bnb_panel_balanced <- bnb_panel_balanced %>%
+  group_by(region_name) %>%
+  mutate(
+    host_response_rate = ifelse(is.na(host_response_rate),
+                                median(host_response_rate, na.rm = TRUE),
+                                host_response_rate),
+    host_acceptance_rate = ifelse(is.na(host_acceptance_rate),
+                                  median(host_acceptance_rate, na.rm = TRUE),
+                                  host_acceptance_rate)
+  ) %>%
+  ungroup()
+summary(bnb_panel_balanced)
+
+```
+
+#### Final checks
+
+```{r}
+# Count how many months each id appears
+id_month_counts <- bnb_panel_balanced %>%
+  count(id, name = "n_months")
+
+# Distribution (how many have 9, 10, 11, 12)
+table(id_month_counts$n_months)
+
+# Quick summary stats
+summary(id_month_counts$n_months)
+
+# Sanity: confirm all are between 9 and 12
+all(id_month_counts$n_months >= 9 & id_month_counts$n_months <= 12)
+
+# list of violators (should be zero rows)
+id_month_counts %>% filter(n_months < 9 | n_months > 12)
+
+str(bnb_panel_balanced)
+
+
+```
+
+#### FIXED EFFECT PANEL REGRESSION
+
+```{r}
+library(dplyr)
+library(plm)
+library(lmtest)
+library(sandwich)
+
+# --- Re-coerce host_response_time to ordered factor (if it slipped to integers) ---
+hrt_levels <- c("within an hour","within a few hours","within a day","a few days or more")
+
+if (is.integer(bnb_panel_balanced$host_response_time) || is.numeric(bnb_panel_balanced$host_response_time)) {
+  uniq_vals <- sort(unique(bnb_panel_balanced$host_response_time))
+  if (!all(uniq_vals %in% 1:4)) stop(paste("Unexpected codes in host_response_time:", paste(uniq_vals, collapse=", ")))
+  bnb_panel_balanced$host_response_time <- factor(
+    bnb_panel_balanced$host_response_time,
+    levels = 1:4, labels = hrt_levels, ordered = TRUE
+  )
+} else {
+  # normalize characters (rare case)
+  bnb_panel_balanced$host_response_time <- trimws(tolower(as.character(bnb_panel_balanced$host_response_time)))
+  bnb_panel_balanced$host_response_time <- factor(
+    bnb_panel_balanced$host_response_time,
+    levels = tolower(hrt_levels), labels = hrt_levels, ordered = TRUE
+  )
+}
+
+# quick sanity
+stopifnot(is.ordered(bnb_panel_balanced$host_response_time))
+
+
+# Data prep
+data_fe <- bnb_panel_balanced %>%
+  filter(price > 0) %>%
+  mutate(
+    lprice = log(price),
+    host_response_time = factor(host_response_time, ordered = TRUE)
+  )
+
+# Panel index
+pdata <- pdata.frame(data_fe, index = c("id","month"))
+
+# Lean predictors to avoid singularities in two-way FE
+predictors_lean <- c(
+  "accommodates",    
+  "minimum_nights_avg_ntm",
+  "review_scores_accuracy",
+  "review_scores_checkin",
+  "review_scores_communication",
+  "review_scores_value",
+  "minimum_nights",               
+  "number_of_reviews",
+    "availability_90 * number_of_reviews_l30d",
+"accommodates * review_scores_accuracy",
+"review_scores_accuracy * review_scores_communication",
+"reviews_per_month * accommodates",
+"bedrooms * number_of_reviews",
+  "number_of_reviews_l30d",
+  "availability_90",
+  "reviews_per_month",
+ "availability_30"
+)
+
+fe_formula_lean <- as.formula(paste("lprice ~", paste(predictors_lean, collapse = " + ")))
+
+# 2) Two-way FE (ID + Month)
+fe_tw <- plm(fe_formula_lean, data = pdata, model = "within", effect = "twoways")
+print(summary(fe_tw))
+
+```
+
+#### RANDOM EFFECT PANEL REGRESSION
+
+```{r}
+# Random Effects, one-way (individual)
+re_ind <- plm(
+  fe_formula_lean,
+  data   = pdata,
+  model  = "random",
+  effect = "individual"
+)
+summary(re_ind)
+
+```
+
+#### Hausman Test
+
+```{r}
+hausman_test <- phtest(fe_tw, re_ind)
+print(hausman_test)
+#hence we use the fixed effect model
+```
+
+#### SJ PLOT FOR Visualization
+
+```{r}
+# ---- libs ----
+library(plm)
+library(lmtest)
+library(sjPlot)
+
+# ---- overall model p-values (robust to missing slots) ----
+pval_fe <- tryCatch({
+  s <- summary(fe_tw)                   # FE: overall F-test
+  s$fstatistic[["p-value"]] %||% s$fstatistic$p.value
+}, error = function(e) NA_real_)
+
+pval_re <- tryCatch({
+  s <- summary(re_ind)                  # RE: Wald test
+  if (!is.null(s$waldstat$p.value)) {
+    s$waldstat$p.value
+  } else if (!is.null(s$waldstat$statistic) && !is.null(s$waldstat$parameter)) {
+    1 - pchisq(s$waldstat$statistic, df = s$waldstat$parameter)
+  } else NA_real_
+}, error = function(e) NA_real_)
+
+# ---- Hausman test (FE vs RE) ----
+hausman_res <- tryCatch(phtest(fe_tw, re_ind), error = function(e) NULL)
+
+haus_txt <- if (!is.null(hausman_res)) {
+  sprintf(
+    "Hausman: χ²(%s) = %s, p = %s → %s",
+    as.integer(hausman_res$parameter),
+    format(round(as.numeric(hausman_res$statistic), 0), big.mark = ","),
+    format.pval(hausman_res$p.value, digits = 3, eps = 1e-16),
+    ifelse(hausman_res$p.value < 0.05, "FE preferred", "RE consistent")
+  )
+} else {
+  "Hausman: not available"
+}
+
+# ---- notes (model-level p-values) ----
+note_txt <- sprintf(
+  "Model p-values — FE (overall F-test): %s; RE (Wald χ²): %s.",
+  format.pval(pval_fe, digits = 3, eps = 1e-3),
+  format.pval(pval_re, digits = 3, eps = 1e-3)
+)
+
+# ---- table ----
+tab_model(
+  list(fe_tw, re_ind),
+  show.ci     = FALSE,
+  show.se     = TRUE,
+  show.stat   = TRUE,
+  show.p      = TRUE,
+  show.icc    = FALSE,
+  show.re.var = FALSE,
+  show.aic    = TRUE,
+  show.loglik = TRUE,
+  show.r2     = FALSE,
+  dv.labels   = c("Fixed Effects (TW)", "Random Effects"),
+  # Put Hausman in the title so it always shows
+  title       = paste0("Panel Regression Models: Airbnb Prices",
+                       "<br><span style='font-weight:normal'>", haus_txt, "</span>"),
+  notes       = note_txt,
+  wrap.labels = 28
+)
+```
