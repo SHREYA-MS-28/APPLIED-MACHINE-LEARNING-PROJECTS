@@ -1,0 +1,830 @@
+---
+title: "SentimentAnalysis"
+format: html
+editor: Rohan Chawla
+---
+
+# Loading Required Libraries and Sentiment Lexicons
+
+```{r}
+library(dplyr)
+library(lubridate)   # for easier date manipulation
+library(ggplot2)
+library(tidytext)
+library(tidyr)
+library(tidyverse)
+library(tidytext)
+
+# Load sentiment lexicons
+get_sentiments("bing")   # assigns positive/negative sentiment
+library(textdata)        # needed to download AFINN/NRC lexicons once
+get_sentiments("afinn")  # assigns sentiment scores from -5 to +5
+get_sentiments("nrc")    # assigns one of 10 emotions (see NRC lexicon: https://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm)
+
+library(sentimentr)      # additional sentiment analysis functions
+```
+
+# Loading the required files (**Monthly Review) Datasets and Combining into a Single Dataframe**
+
+```{r}
+june25_reviews   <- read.csv("june25_reviews.csv")
+may25_reviews    <- read.csv("may25_reviews.csv")
+april25_reviews  <- read.csv("april25_reviews.csv")
+march25_reviews  <- read.csv("march25_reviews.csv")
+feb25_reviews    <- read.csv("feb25_reviews.csv")
+jan25_reviews    <- read.csv("jan25_reviews.csv")
+dec24_reviews    <- read.csv("dec24_reviews.csv")
+nov24_reviews    <- read.csv("nov24_reviews.csv")
+oct24_reviews    <- read.csv("oct24_reviews.csv")
+sept24_reviews   <- read.csv("sept24_reviews.csv")
+august24_reviews <- read.csv("august24_reviews.csv")
+july24_reviews   <- read.csv("july24_reviews.csv")
+
+
+
+
+
+# Combine all datasets
+all_reviews <- bind_rows(
+  july24_reviews,
+  august24_reviews,
+  sept24_reviews,
+  oct24_reviews,
+  nov24_reviews,
+  dec24_reviews,
+  jan25_reviews,
+  feb25_reviews,
+  march25_reviews,
+  april25_reviews,
+  may25_reviews,
+  june25_reviews
+)
+
+# Check the combined dataset
+dim(all_reviews)
+head(all_reviews,1)
+
+str(all_reviews)
+
+summary(all_reviews$comments)
+
+
+```
+
+# Initial Wrangle : **Handling Dates and Missing Values in Reviews**
+
+```{r}
+
+# Convert date to Date type
+all_reviews$date <- as.Date(all_reviews$date)
+
+
+colSums(is.na(all_reviews))
+
+
+# Remove rows with NA in comments
+all_reviews <- all_reviews %>%
+  filter(!is.na(comments))
+
+```
+
+# **Filtering Reviews by Date Range and Monthly Review Trends**
+
+```{r}
+# Define the date range
+start_date <- as.Date("2024-07-01")
+end_date <- as.Date("2025-06-30")
+
+# Filter reviews within these 12 months
+reviews_12months <- all_reviews %>%
+  filter(date >= start_date & date <= end_date, !is.na(comments))
+
+
+str(reviews_12months)
+
+
+# Add a month column using floor_date
+reviews_12months <- reviews_12months %>%
+  mutate(month = floor_date(date, "month"))
+
+# Count reviews per month and plot
+reviews_12months %>%
+  count(month) %>%
+  ggplot(aes(x = month, y = n)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Number of Reviews per Month", x = "Month", y = "Count")
+
+
+# Count reviews per month
+monthly_counts <- reviews_12months %>%
+  group_by(month) %>%
+  summarise(num_reviews = n()) %>%
+  arrange(month)
+
+# View the result
+str(monthly_counts)
+```
+
+# **Enhanced Visualization of Monthly Reviews**
+
+```{r}
+
+library(scales)
+
+rausch <- "#FF5A5F"  # Airbnb Rausch color
+
+reviews_12months %>%
+  count(month) %>%
+  ggplot(aes(x = month, y = n)) +
+  geom_line(color = rausch, size = 1) +
+  geom_point(color = rausch, size = 2) +
+  labs(x = "Month", y = "Count") +
+  scale_y_continuous(labels = comma) +
+  scale_x_date(
+    date_breaks = "1 month",
+    date_labels = "%b %Y",
+    expand = c(0.01, 0)
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_line(color = "grey85"), # light grid
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = rausch, linewidth = 1), # both x & y axis in rausch
+    axis.text.x = element_text(face = "bold", angle = 45, hjust = 1, color = rausch),
+    axis.text.y = element_text(face = "bold", color = rausch),
+    axis.title.x = element_text(face = "bold", color = rausch),
+    axis.title.y = element_text(face = "bold", color = rausch),
+    plot.title = element_blank()
+  )
+```
+
+# SENTIMENT ANALYSIS - **Preparing Review Text for Sentiment Analysis and Loading Lexicons**
+
+```{r}
+# Convert id and listing_id to character, then tokenize comments into words
+reviews_words <- reviews_12months %>%
+  select(listing_id, id, comments, month) %>%
+  mutate(
+    id = as.character(id),             # preserve large review IDs
+    listing_id = as.character(listing_id)  # preserve large listing IDs
+  ) %>%
+  unnest_tokens(word, comments)
+
+# Check structure
+str(reviews_words)
+
+# Load sentiment lexicons
+bing  <- get_sentiments("bing")
+nrc   <- get_sentiments("nrc")
+afinn <- get_sentiments("afinn")
+```
+
+# **Calculating Review-Level and Overall Bing Sentiment Scores**
+
+```{r}
+# 1️⃣ Bing sentiment per review (review-level, entire dataset)
+reviews_bing_review <- reviews_words %>%
+  inner_join(bing, by = "word", relationship = "many-to-many") %>%
+  group_by(id) %>%
+  summarise(
+    positive = sum(sentiment == "positive"),
+    negative = sum(sentiment == "negative"),
+    bing_score = positive - negative,
+    .groups = "drop"
+  )
+
+# Overall dataset sentiment 
+bing_overall <- reviews_bing_review %>%
+  summarise(
+    total_positive = sum(positive),
+    total_negative = sum(negative),
+    total_bing_score = sum(bing_score)
+  ) %>%
+  mutate(
+    total_words = total_positive + total_negative,
+    perc_positive = round((total_positive / total_words) * 100, 2),
+    perc_negative = round((total_negative / total_words) * 100, 2),
+    perc_net = round((total_bing_score / total_words) * 100, 2)  # net positivity %
+  )
+
+bing_overall
+```
+
+# **Summary Statistics for Review-Level Bing Sentiment**
+
+```{r}
+# --- Summary stats for review-level sentiment ---
+bing_summary <- reviews_bing_review %>%
+  summarise(
+    avg_positive   = mean(positive, na.rm = TRUE),
+    sd_positive    = sd(positive, na.rm = TRUE),
+    ci95_pos_low   = avg_positive - 1.96 * (sd_positive / sqrt(n())),
+    ci95_pos_high  = avg_positive + 1.96 * (sd_positive / sqrt(n())),
+    
+    avg_negative   = mean(negative, na.rm = TRUE),
+    sd_negative    = sd(negative, na.rm = TRUE),
+    ci95_neg_low   = avg_negative - 1.96 * (sd_negative / sqrt(n())),
+    ci95_neg_high  = avg_negative + 1.96 * (sd_negative / sqrt(n())),
+    
+    avg_bing_score = mean(bing_score, na.rm = TRUE),
+    sd_bing_score  = sd(bing_score, na.rm = TRUE),
+    ci95_score_low = avg_bing_score - 1.96 * (sd_bing_score / sqrt(n())),
+    ci95_score_high= avg_bing_score + 1.96 * (sd_bing_score / sqrt(n()))
+  )
+
+bing_summary
+```
+
+# **Bing Sentiment Word Clouds for Positive and Negative Words**
+
+```{r}
+library(dplyr)
+library(wordcloud2)
+library(RColorBrewer)
+
+# --- 1️⃣ Join reviews with Bing sentiment lexicon ---
+bing_words_all <- reviews_words %>%
+  inner_join(bing, by = "word", relationship = "many-to-many") %>%
+  count(word, sentiment, sort = TRUE)
+
+# --- 2️⃣ Split into positive and negative words ---
+positive_words <- bing_words_all %>% filter(sentiment == "positive")
+negative_words <- bing_words_all %>% filter(sentiment == "negative")
+
+# --- 3️⃣ Word Cloud for Positive Words ---
+positive_words_wc <- positive_words %>%
+  arrange(desc(n)) %>%
+  slice_head(n = 500)   # top 900 words
+
+set.seed(123)
+wordcloud2(
+  data = positive_words_wc %>% select(word, freq = n),
+  size = 1, 
+  color = 'random-dark', 
+  shape = 'circle',
+  rotateRatio = 0.2,        # less rotation for readability
+  ellipticity = 0.6,
+  backgroundColor = "white"
+)
+
+# --- 4️⃣ Word Cloud for Negative Words (remove 'die') ---
+negative_words_wc <- negative_words %>%
+  filter(word != "die") %>%   # remove "die" as stopword
+  arrange(desc(n)) %>%
+  slice_head(n = 500)         # top 500 words
+
+set.seed(123)
+wordcloud2(
+  data = negative_words_wc %>% select(word, freq = n),
+  size = 1, 
+  color = 'random-light', 
+  shape = 'circle',
+  rotateRatio = 0.2,
+  ellipticity = 0.6,
+  backgroundColor = "white"   # high contrast
+)
+```
+
+# Stopword Analysis: Identifying Comments Containing “die”
+
+```{r}
+
+############## 'D I E'  S T O P W O R D.  A N A L Y S I S  #####################
+
+library(dplyr)
+library(stringr)
+
+# Filter comments containing "die"
+comments_with_die <- all_reviews %>%
+  filter(str_detect(tolower(comments), "\\bdie\\b"))  # \b ensures 'die' as a whole word
+
+# View results
+comments_with_die
+
+
+###########
+
+
+```
+
+# Enhanced Negative Word Cloud with Custom Color Palette
+
+```{r}
+
+library(RColorBrewer)
+
+# Example: 8 shades from the "Set1" palette
+custom_colors <- brewer.pal(8, "Set1")
+
+wordcloud2(
+  data = negative_words_wc %>% select(word, freq = n),
+  size = 1, 
+  color = rep(custom_colors, length.out = nrow(negative_words_wc)),
+  shape = 'circle',
+  rotateRatio = 0.2,
+  ellipticity = 0.6,
+  backgroundColor = "white"
+)
+```
+
+# Enhanced Positive Word Cloud with Custom Color Palette
+
+```{r}
+
+library(RColorBrewer)
+
+
+
+# Example: 8 shades from the "Set1" palette
+
+custom_colors <- brewer.pal(8, "Set2")
+
+
+
+wordcloud2(
+
+  data = positive_words_wc %>% select(word, freq = n),
+
+  size = 1, 
+
+  color = rep(custom_colors, length.out = nrow(positive_words_wc)),
+
+  shape = 'circle',
+
+  rotateRatio = 0.2,
+
+  ellipticity = 0.6,
+
+  backgroundColor = "white"
+
+)
+
+```
+
+# Enhanced Negative Word Cloud with Custom Set1 Palette (Yellow Removed)
+
+```{r}
+library(RColorBrewer)
+
+# Example: 8 shades from the "Set1" palette (without yellow)
+custom_colors <- brewer.pal(8, "Set1")
+custom_colors <- custom_colors[custom_colors != "#FFFF33"]  # remove yellow
+
+wordcloud2(
+  data = negative_words_wc %>% select(word, freq = n),
+  size = 1, 
+  color = rep(custom_colors, length.out = nrow(negative_words_wc)),
+  shape = 'circle',
+  rotateRatio = 0.2,
+  ellipticity = 0.6,
+  backgroundColor = "white"
+)
+
+```
+
+# Review-Level and Monthly Bing Sentiment Analysis with Visualizations
+
+```{r}
+# 1. Histogram of review-level Bing scores
+ggplot(reviews_bing_review, aes(x = bing_score)) +
+  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+  labs(
+    title = "Distribution of Bing Sentiment Scores per Review",
+    x = "Bing Score (positive - negative)",
+    y = "Number of Reviews"
+  ) +
+  theme_minimal()
+
+
+
+# 3. Combine review-level sentiment with listing_id and month
+reviews_bing_listing_month <- reviews_12months %>%
+  select(listing_id, id, month) %>%
+  mutate(id = as.character(id), listing_id = as.character(listing_id)) %>%
+  left_join(reviews_bing_review, by = "id") %>%
+  group_by(listing_id, month) %>%
+  summarise(
+    positive = sum(positive, na.rm = TRUE),
+    negative = sum(negative, na.rm = TRUE),
+    bing_score = sum(bing_score, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Example plot: Bing sentiment trend for a few listings
+top_five_listings <- reviews_bing_listing_month %>%
+  group_by(listing_id) %>%
+  summarise(total_bing = sum(bing_score)) %>%
+  arrange(desc(total_bing)) %>%
+  slice_head(n = 5) %>%
+  pull(listing_id)
+
+ggplot(reviews_bing_listing_month %>% filter(listing_id %in% top_five_listings),
+       aes(x = month, y = bing_score, color = listing_id)) +
+  geom_line(size = 1) +
+  geom_point() +
+  labs(
+    title = "Monthly Bing Sentiment Trend for Top 5 Listings",
+    x = "Month",
+    y = "Bing Score",
+    color = "Listing ID"
+  ) +
+  theme_minimal()
+
+
+
+# 📊 4. Overall monthly Bing sentiment for all BnBs
+reviews_bing_month <- reviews_12months %>%
+  select(id, month) %>%
+  mutate(id = as.character(id)) %>%
+  left_join(reviews_bing_review, by = "id") %>%
+  group_by(month) %>%
+  summarise(
+    positive = sum(positive, na.rm = TRUE),
+    negative = sum(negative, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(cols = c(positive, negative),
+               names_to = "sentiment_type",
+               values_to = "count")
+
+# 📈 Visualization — positive & negative over time
+ggplot(reviews_bing_month, aes(x = month, y = count, color = sentiment_type)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c("positive" = "darkgreen", "negative" = "red")) +
+  labs(
+    title = "Monthly Positive & Negative Bing Sentiment (All Listings)",
+    x = "Month",
+    y = "Word Count",
+    color = "Sentiment Type"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# 📊 Stacked bar chart for monthly Bing sentiment
+ggplot(reviews_bing_month, aes(x = month, y = count, fill = sentiment_type)) +
+  geom_col(position = "stack") +
+  scale_fill_manual(values = c("positive" = "darkgreen", "negative" = "red")) +
+  labs(
+    title = "Monthly Positive & Negative Bing Sentiment (All Listings)",
+    x = "Month",
+    y = "Word Count",
+    fill = "Sentiment Type"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Review-Level and Listing-Level NRC Sentiment Analysis
+
+```{r}
+# 1. NRC sentiment per review (review-level)
+reviews_nrc_review <- reviews_words %>%
+  inner_join(nrc, by = "word", relationship = "many-to-many") %>%
+  group_by(id, sentiment) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  pivot_wider(names_from = sentiment, values_from = count, values_fill = 0)
+
+# Overall NRC sentiment counts and percentages
+nrc_overall <- reviews_nrc_review %>%
+  select(-id) %>%  # remove review ID
+  summarise(across(everything(), ~ sum(.x, na.rm = TRUE))) %>%  # sum per sentiment
+  pivot_longer(everything(), names_to = "sentiment", values_to = "count") %>%
+  mutate(
+    perc = round((count / sum(count)) * 100, 2)  # percentage of total words
+  )
+
+
+# 2. NRC sentiment per listing (listing-level)
+reviews_nrc_listing <- reviews_12months %>%
+  select(listing_id, id) %>%
+  mutate(id = as.character(id), listing_id = as.character(listing_id)) %>%
+  left_join(reviews_nrc_review, by = "id") %>%
+  group_by(listing_id) %>%
+  summarise(across(-id, ~ sum(.x, na.rm = TRUE)), .groups = "drop")
+```
+
+# EMOTION ANALYSIS - NRC Sentiment Visualizations, Stacked Trends, and Enhanced Word Clouds
+
+```{r}
+
+# Viz 1. Overall sentiment distribution
+ggplot(nrc_overall, aes(x = reorder(sentiment, count), y = count, fill = sentiment)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Overall NRC Sentiment Distribution",
+       x = "Sentiment/Emotion",
+       y = "Total Word Count") +
+  theme_minimal() +
+  scale_fill_manual(values = c(
+    "positive" = "darkgreen", "negative" = "red",
+    "anger" = "darkred", "anticipation" = "orange", "disgust" = "brown",
+    "fear" = "purple", "joy" = "yellowgreen", "sadness" = "blue",
+    "surprise" = "pink", "trust" = "darkblue"
+  ))
+
+
+
+
+# Viz 3. Comparison of top listings
+library(viridis)
+
+reviews_nrc_month <- reviews_12months %>%
+  select(listing_id, id, month) %>%
+  mutate(
+    id = as.character(id),
+    listing_id = as.character(listing_id)
+  ) %>%
+  left_join(reviews_nrc_review, by = "id") %>%
+  group_by(month) %>%
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE)), .groups = "drop") %>%
+  pivot_longer(cols = -month, names_to = "sentiment", values_to = "count")
+
+ggplot(reviews_nrc_month, aes(x = month, y = sentiment, fill = count)) +
+  geom_tile(color = "white") +
+  scale_fill_viridis(option = "C") +
+  labs(title = "Monthly NRC Sentiment Heatmap", x = "Month", y = "Sentiment/Emotion") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+# Viz 4. Comparison of top listings
+# Pivot NRC month data to wide format for pos/neg ratio
+reviews_nrc_wide <- reviews_nrc_month %>%
+  filter(sentiment %in% c("positive", "negative")) %>%
+  pivot_wider(names_from = sentiment, values_from = count, values_fill = 0) %>%
+  mutate(pos_neg_ratio = positive / (negative + 1))  # +1 to avoid division by zero
+
+# Plot
+ggplot(reviews_nrc_wide, aes(x = month, y = pos_neg_ratio)) +
+  geom_line(color = "darkgreen", size = 1) +
+  geom_point() +
+  labs(
+    title = "Positive/Negative NRC Sentiment Ratio Over Time",
+    x = "Month",
+    y = "Positive / Negative Ratio"
+  ) +
+  theme_minimal()
+
+
+#viz 5. 
+# Summarise NRC sentiment for all listings by month
+reviews_nrc_month_all <- reviews_12months %>%
+  select(listing_id, id, month) %>%
+  mutate(id = as.character(id), listing_id = as.character(listing_id)) %>%
+  left_join(reviews_nrc_review, by = "id") %>%
+  group_by(month) %>%
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE)), .groups = "drop") %>%
+  pivot_longer(cols = -month, names_to = "sentiment", values_to = "count")
+
+# Stacked bar chart
+ggplot(reviews_nrc_month_all, aes(x = month, y = count, fill = sentiment)) +
+  geom_col(position = "stack") +
+  scale_fill_manual(values = c(
+    "positive" = "darkgreen", "negative" = "red",
+    "anger" = "darkred", "anticipation" = "orange", "disgust" = "brown",
+    "fear" = "purple", "joy" = "yellowgreen", "sadness" = "blue",
+    "surprise" = "pink", "trust" = "darkblue"
+  )) +
+  labs(
+    title = "Monthly NRC Sentiment Trend (Stacked) — All Listings",
+    x = "Month",
+    y = "Word Count",
+    fill = "Sentiment/Emotion"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+#####
+library(dplyr)
+library(ggplot2)
+
+# Compute percentages per month
+reviews_nrc_month_all_pct <- reviews_nrc_month_all %>%
+  group_by(month) %>%
+  mutate(
+    total_words = sum(count),
+    perc = round((count / total_words) * 100, 1),          # percentage
+    label = paste0(perc, "%")                             # text label
+  ) %>%
+  ungroup()
+
+# Stacked bar chart with percentages
+ggplot(reviews_nrc_month_all_pct, aes(x = month, y = count, fill = sentiment)) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = label), 
+            position = position_stack(vjust = 0.5),   # center inside segment
+            size = 3, color = "white") +
+  scale_fill_manual(values = c(
+    "positive" = "darkgreen", "negative" = "red",
+    "anger" = "darkred", "anticipation" = "orange", "disgust" = "brown",
+    "fear" = "purple", "joy" = "yellowgreen", "sadness" = "blue",
+    "surprise" = "pink", "trust" = "darkblue"
+  )) +
+  labs(
+    title = "Monthly NRC Sentiment Trend (Stacked) — All Listings",
+    x = "Month",
+    y = "Word Count",
+    fill = "Sentiment/Emotion"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#####
+
+# Summarise NRC counts per month
+reviews_nrc_month_wide <- reviews_12months %>%
+     select(listing_id, id, month) %>%
+     mutate(id = as.character(id), listing_id = as.character(listing_id)) %>%
+     left_join(reviews_nrc_review, by = "id") %>%
+     group_by(month) %>%
+     summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE)), .groups = "drop") %>%
+     pivot_longer(cols = -month, names_to = "sentiment", values_to = "count") %>%
+     group_by(month) %>%
+     mutate(
+         total_words = sum(count),
+         perc = round((count / total_words) * 100, 2)
+       ) %>%
+     select(month, sentiment, perc) %>%
+     pivot_wider(names_from = sentiment, values_from = perc) %>%
+     arrange(month)  # optional: sort months chronologically
+# Optional: rename months
+reviews_nrc_month_wide$month <- paste0(substr(month.name[as.numeric(format(as.Date(paste0(reviews_nrc_month_wide$month, "-01")), "%m"))], 1, 3), "25")
+# View
+reviews_nrc_month_wide
+
+#-----------
+
+library(dplyr)
+library(wordcloud2)
+
+# --- Prepare NRC words with sentiment ---
+nrc_words_all <- reviews_words %>%
+  inner_join(nrc, by = "word", relationship = "many-to-many") %>%
+  count(word, sentiment, sort = TRUE)
+
+# Define colors for each sentiment
+sentiment_colors <- c(
+  "positive" = "darkgreen", "negative" = "red",
+  "anger" = "darkred", "anticipation" = "orange", "disgust" = "brown",
+  "fear" = "purple", "joy" = "yellowgreen", "sadness" = "blue",
+  "surprise" = "pink", "trust" = "darkblue"
+)
+
+# Function to create word cloud per sentiment
+plot_sentiment_wordcloud <- function(sentiment_name, max_words = 500) {
+  df <- nrc_words_all %>%
+    filter(sentiment == sentiment_name) %>%
+    slice_max(order_by = n, n = max_words) %>%
+    mutate(color = sentiment_colors[sentiment]) %>%  # character column
+    select(word, freq = n, color)
+  
+  # wordcloud2 requires data frame with "word" and "freq"; color inside data
+  wordcloud2(data = df, size = 1, shape = "circle", rotateRatio = 0.25, ellipticity = 0.6)
+}
+
+# Example: plot positive word cloud
+plot_sentiment_wordcloud("fear", max_words = 900)
+
+# Example: plot negative word cloud
+plot_sentiment_wordcloud("surprise", max_words = 800)
+
+
+#-----------
+
+library(dplyr)
+library(tidyr)
+
+# Summarize word counts per sentiment
+nrc_words_summary <- nrc_words_all %>%
+  group_by(sentiment) %>%
+  arrange(sentiment, desc(n)) %>%
+  summarise(words = paste(word, collapse = ", "),
+            counts = paste(n, collapse = ", "),
+            .groups = "drop")
+
+# Optional: view top 20 words per sentiment
+top_n_words_per_sentiment <- nrc_words_all %>%
+  group_by(sentiment) %>%
+  slice_max(order_by = n, n = 20) %>%
+  arrange(sentiment, desc(n))
+
+# View
+top_n_words_per_sentiment
+
+
+```
+
+# AFINN Sentiment Analysis: Review-Level, Listing-Level, and Monthly Trends
+
+```{r}
+# 1. Join with afinn lexicon
+reviews_afinn_review <- reviews_words %>%
+  inner_join(afinn, by = "word", relationship = "many-to-many") %>%
+  group_by(id) %>%
+  summarise(
+    afinn_score = sum(value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+str(reviews_afinn_review)
+
+# Overall AFINN sentiment (entire dataset)
+afinn_overall <- reviews_afinn_review %>%
+  summarise(
+    total_score = sum(afinn_score),
+    avg_score = mean(afinn_score)
+  )
+
+
+# 1.1 
+reviews_afinn_review <- reviews_words %>%
+  inner_join(afinn, by = "word") %>%
+  group_by(id) %>%
+  summarise(
+    afinn_score = sum(value),     # sum of AFINN scores
+    n_words = n(),                # number of words in review
+    afinn_normalized = afinn_score / n_words,  # per-word average
+    .groups = "drop"
+  )
+
+afinn_overall <- reviews_afinn_review %>%
+  summarise(
+    avg_score_per_review = mean(afinn_score),
+    median_score_per_review = median(afinn_score),
+    min_score = min(afinn_score),
+    max_score = max(afinn_score)
+  )
+
+
+# 2. AFINN sentiment per listing (listing-level)
+
+reviews_afinn_listing <- reviews_12months %>%
+  select(listing_id, id) %>%
+  mutate(id = as.character(id), listing_id = as.character(listing_id)) %>%
+  left_join(reviews_afinn_review, by = "id") %>%
+  group_by(listing_id) %>%
+  summarise(
+    total_afinn = sum(afinn_score, na.rm = TRUE),
+    avg_afinn = mean(afinn_score, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+
+# viz 1.  Histogram of review-level AFINN scores
+
+ggplot(reviews_afinn_review, aes(x = afinn_score)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "black") +
+  labs(title = "Distribution of AFINN Sentiment Scores per Review",
+       x = "AFINN Score",
+       y = "Number of Reviews") +
+  theme_minimal()
+
+
+# viz 2. Top 20 listings by total sentiment
+
+top_afinn_listings <- reviews_afinn_listing %>%
+  arrange(desc(total_afinn)) %>%
+  slice_head(n = 20)
+
+ggplot(top_afinn_listings, aes(x = reorder(listing_id, total_afinn), y = total_afinn)) +
+  geom_col(fill = "darkgreen") +
+  coord_flip() +
+  labs(title = "Top 20 Listings by Total AFINN Sentiment Score",
+       x = "Listing ID",
+       y = "Total AFINN Score") +
+  theme_minimal()
+
+#viz 3. Monthly trend for top listings
+# Combine review-level AFINN with month and listing
+reviews_afinn_month <- reviews_12months %>%
+  select(listing_id, id, month) %>%
+  mutate(id = as.character(id), listing_id = as.character(listing_id)) %>%
+  left_join(reviews_afinn_review, by = "id") %>%
+  group_by(listing_id, month) %>%
+  summarise(monthly_afinn = sum(afinn_score, na.rm = TRUE), .groups = "drop")
+
+top5_afinn_listings <- reviews_afinn_month %>%
+  group_by(listing_id) %>%
+  summarise(total_afinn = sum(monthly_afinn, na.rm = TRUE)) %>%
+  arrange(desc(total_afinn)) %>%
+  slice_head(n = 5) %>%
+  pull(listing_id)
+
+ggplot(reviews_afinn_month %>% filter(listing_id %in% top5_afinn_listings),
+       aes(x = month, y = monthly_afinn, color = listing_id)) +
+  geom_line(size = 1) +
+  geom_point() +
+  labs(title = "Monthly AFINN Sentiment Trend for Top 5 Listings",
+       x = "Month",
+       y = "Monthly AFINN Score",
+       color = "Listing ID") +
+  theme_minimal()
+
+
+```
