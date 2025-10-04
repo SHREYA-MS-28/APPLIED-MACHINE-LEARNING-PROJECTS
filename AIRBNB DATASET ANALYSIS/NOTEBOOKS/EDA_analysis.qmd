@@ -1,0 +1,1867 @@
+---
+title: "EDA_Analysis"
+format: html
+editor: visual
+---
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(purrr)
+library(readr)    
+library(stringr) 
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(forcats)
+library(lubridate)
+library(stringr)
+```
+
+```{r}
+# =========================
+# 1) Load your CSVs (same folder)
+# =========================
+
+library(readr)
+
+april_listings    <- read_csv("Listings/listings_April.csv",col_types = cols(id = col_character()))
+august_listings   <- read.csv("Listings/listings_August.csv",    colClasses = c(id = "character"))
+december_listings <- read.csv("Listings/listings_December.csv",  colClasses = c(id = "character"))
+february_listings <- read.csv("Listings/listings_February.csv", colClasses = c(id = "character"))
+january_listings  <- read.csv("Listings/listings_January.csv", colClasses = c(id = "character"))
+july_listings     <- read.csv("Listings/listings_July.csv",  colClasses = c(id = "character"))
+march_listings    <- read.csv("Listings/listings_March.csv", colClasses = c(id = "character"))
+june_listings     <- read_csv("Listings/listings_June.csv", col_types = cols(id = col_character()))
+may_listings      <- read.csv("Listings/listings_May.csv",  colClasses = c(id = "character"))
+november_listings <- read.csv("Listings/listings_November.csv", colClasses = c(id = "character"))
+october_listings  <- read.csv("Listings/listings_October.csv",  colClasses = c(id = "character"))
+september_listings<- read.csv("Listings/listings_September.csv",  colClasses = c(id = "character"))
+
+```
+
+The following code standardizes the `id` column in each monthly Airbnb listings dataset.\
+It defines a helper function `fix_id()` that extracts the numeric listing ID from the `listing_url` column using a regular expression,\
+replaces the existing `id` values with this extracted ID, and applies the function to all 12 monthly datasets to ensure consistency.
+
+```{r}
+# Define a helper function to fix IDs
+fix_id <- function(df) {
+  df$id <- sub(".*/rooms/(\\d+).*", "\\1", df$listing_url)
+  return(df)
+}
+
+# Apply to each month
+january_listings   <- fix_id(january_listings)
+february_listings  <- fix_id(february_listings)
+march_listings     <- fix_id(march_listings)
+april_listings     <- fix_id(april_listings)
+may_listings       <- fix_id(may_listings)
+june_listings      <- fix_id(june_listings)
+july_listings      <- fix_id(july_listings)
+august_listings    <- fix_id(august_listings)
+september_listings <- fix_id(september_listings)
+october_listings   <- fix_id(october_listings)
+november_listings  <- fix_id(november_listings)
+december_listings  <- fix_id(december_listings)
+```
+
+The following code retrieves and displays the column names for each of the 12 monthly Airbnb listings datasets.\
+This quick check helps verify that all datasets share a consistent structure before performing further analysis or combining them.
+
+```{r}
+# Quick peek (your original lines corrected)
+colnames(january_listings)
+colnames(february_listings)
+colnames(march_listings)
+colnames(april_listings)
+colnames(may_listings)
+colnames(june_listings)
+colnames(july_listings)
+colnames(august_listings)
+colnames(september_listings)
+colnames(october_listings)
+colnames(november_listings)
+colnames(december_listings)
+```
+
+The following code creates a named list (`dfs`) containing all 12 monthly Airbnb listings datasets.\
+Each dataset is labeled by month, enabling streamlined operations—such as checking for missing values in the `host_since` column—across all months in a single loop or function call.
+
+```{r}
+ #=========================
+# 2) NA checks for host_since (per month)
+# =========================
+dfs <- list(
+  July      = july_listings,
+  August    = august_listings,
+  September = september_listings,
+  October   = october_listings,
+  November  = november_listings,
+  December  = december_listings,
+  January   = january_listings,
+  February  = february_listings,
+  March     = march_listings,
+  April     = april_listings,
+  May       = may_listings,
+  June      = june_listings
+)
+```
+
+The following code generates a month-by-month heatmap of missing values across all variables in the Airbnb listings datasets.
+
+It first aligns columns across months (to handle structural differences), then calculates the number of \`NA\` values for each variable in each month.
+
+These counts are combined into a single data frame, reshaped for visualization, and plotted as a heatmap where darker red indicates more missing values and grey indicates variables not present in that month.
+
+```{r}
+# =========================
+# 3) NA summary across ALL columns × months + Heatmap
+# =========================
+# Align columns (months differ slightly in available columns)
+all_cols <- unique(unlist(lapply(dfs, names)))
+
+na_counts <- function(df) {
+  sapply(all_cols, function(col) {
+    if (col %in% names(df)) sum(is.na(df[[col]])) else NA
+  })
+}
+
+na_summary <- lapply(dfs, na_counts)
+na_summary_df <- as.data.frame(na_summary, row.names = all_cols)
+
+# Heatmap of NA counts
+na_long <- melt(as.matrix(na_summary_df), varnames = c("Variable", "Month"), value.name = "NA_Count")
+
+ggplot(na_long, aes(x = Month, y = Variable, fill = NA_Count)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "white", high = "red", na.value = "grey80") +
+  labs(title = "Missing Values by Variable and Month",
+       x = "Month", y = "Variable", fill = "NA Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+The following code checks the `id` column in the June Airbnb listings dataset to identify listing IDs that contain the letter **"e"** (case-insensitive).\
+It first counts how many such IDs exist, then displays the first 20 matching IDs for review.
+
+```{r}
+# Count how many IDs contain "e"
+sum(grepl("e", june_listings$id, ignore.case = TRUE))
+
+# Show first few IDs that contain "e"
+head(june_listings$id[grepl("e", june_listings$id, ignore.case = TRUE)], 20)
+
+```
+
+```{r}
+#Standardise the ID column
+
+january_listings$id   <- as.character(january_listings$id)
+february_listings$id  <- as.character(february_listings$id)
+march_listings$id     <- as.character(march_listings$id)
+april_listings$id     <- as.character(april_listings$id)
+may_listings$id       <- as.character(may_listings$id)
+june_listings$id      <- as.character(june_listings$id)
+july_listings$id      <- as.character(july_listings$id)
+august_listings$id    <- as.character(august_listings$id)
+september_listings$id <- as.character(september_listings$id)
+october_listings$id   <- as.character(october_listings$id)
+november_listings$id  <- as.character(november_listings$id)
+december_listings$id  <- as.character(december_listings$id)
+
+```
+
+```{r}
+# Function to standardize last_searched for a given data frame and default date
+fix_last_searched <- function(df, default_date) {
+  df$last_searched <- as.character(df$last_searched)
+  
+  valid_dates <- grepl("^\\d{4}-\\d{2}-\\d{2}$", df$last_searched) |
+                 grepl("^\\d{2}-\\d{2}-\\d{4}$", df$last_searched)
+  
+  df$last_searched[!valid_dates | is.na(df$last_searched)] <- default_date
+  
+  df$last_searched <- as.Date(df$last_searched,
+                              tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+  return(df)
+}
+
+# Apply to all months
+january_listings   <- fix_last_searched(january_listings,   "2025-01-01")
+february_listings  <- fix_last_searched(february_listings,  "2025-02-01")
+march_listings     <- fix_last_searched(march_listings,     "2025-03-01")
+april_listings     <- fix_last_searched(april_listings,     "2025-04-01")
+may_listings       <- fix_last_searched(may_listings,       "2025-05-01")
+june_listings      <- fix_last_searched(june_listings,      "2025-06-01")
+july_listings      <- fix_last_searched(july_listings,      "2024-07-01")
+august_listings    <- fix_last_searched(august_listings,    "2024-08-01")
+september_listings <- fix_last_searched(september_listings, "2024-09-01")
+october_listings   <- fix_last_searched(october_listings,   "2024-10-01")
+november_listings  <- fix_last_searched(november_listings,  "2024-11-01")
+december_listings  <- fix_last_searched(december_listings,  "2024-12-01")
+
+```
+
+The following code standardizes the `last_searched` date column for each monthly Airbnb listings dataset.\
+If a value in `last_searched` is missing, it is replaced with the first day of that dataset’s respective month and year.\
+All dates are then converted to a consistent `Date` format, allowing for accurate comparisons and time-based analysis across months.
+
+```{r}
+#Standardised Date column
+
+july_listings$last_searched <- as.Date(ifelse(is.na(july_listings$last_searched),
+                                              "2024-07-01",
+                                              july_listings$last_searched),
+                                       tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+august_listings$last_searched <- as.Date(ifelse(is.na(august_listings$last_searched),
+                                                "2024-08-01",
+                                                august_listings$last_searched),
+                                         tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+september_listings$last_searched <- as.Date(ifelse(is.na(september_listings$last_searched),
+                                                   "2024-09-01",
+                                                   september_listings$last_searched),
+                                            tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+october_listings$last_searched <- as.Date(ifelse(is.na(october_listings$last_searched),
+                                                 "2024-10-01",
+                                                 october_listings$last_searched),
+                                          tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+november_listings$last_searched <- as.Date(ifelse(is.na(november_listings$last_searched),
+                                                  "2024-11-01",
+                                                  november_listings$last_searched),
+                                           tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+december_listings$last_searched <- as.Date(ifelse(is.na(december_listings$last_searched),
+                                                  "2024-12-01",
+                                                  december_listings$last_searched),
+                                           tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+january_listings$last_searched <- as.Date(ifelse(is.na(january_listings$last_searched),
+                                                 "2025-01-01",
+                                                 january_listings$last_searched),
+                                          tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+february_listings$last_searched <- as.Date(ifelse(is.na(february_listings$last_searched),
+                                                  "2025-02-01",
+                                                  february_listings$last_searched),
+                                           tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+march_listings$last_searched <- as.Date(ifelse(is.na(march_listings$last_searched),
+                                               "2025-03-01",
+                                               march_listings$last_searched),
+                                        tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+april_listings$last_searched <- as.Date(ifelse(is.na(april_listings$last_searched),
+                                               "2025-04-01",
+                                               april_listings$last_searched),
+                                        tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+may_listings$last_searched <- as.Date(ifelse(is.na(may_listings$last_searched),
+                                             "2025-05-01",
+                                             may_listings$last_searched),
+                                      tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+june_listings$last_searched <- as.Date(ifelse(is.na(june_listings$last_searched),
+                                              "2025-06-01",
+                                              june_listings$last_searched),
+                                       tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+```
+
+The following code standardizes the `last_scraped` date column for each monthly Airbnb listings dataset.\
+For any missing value, it assigns the first day of that dataset’s respective month and year.\
+All entries are then converted to a consistent `Date` format, ensuring uniformity for accurate chronological analysis across all months.
+
+```{r}
+# ---------------- LAST_SCRAPED ----------------
+july_listings$last_scraped <- as.Date(ifelse(is.na(july_listings$last_scraped), "2024-07-01", july_listings$last_scraped),
+                                      tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+august_listings$last_scraped <- as.Date(ifelse(is.na(august_listings$last_scraped), "2024-08-01", august_listings$last_scraped),
+                                        tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+september_listings$last_scraped <- as.Date(ifelse(is.na(september_listings$last_scraped), "2024-09-01", september_listings$last_scraped),
+                                           tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+october_listings$last_scraped <- as.Date(ifelse(is.na(october_listings$last_scraped), "2024-10-01", october_listings$last_scraped),
+                                         tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+november_listings$last_scraped <- as.Date(ifelse(is.na(november_listings$last_scraped), "2024-11-01", november_listings$last_scraped),
+                                          tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+december_listings$last_scraped <- as.Date(ifelse(is.na(december_listings$last_scraped), "2024-12-01", december_listings$last_scraped),
+                                          tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+january_listings$last_scraped <- as.Date(ifelse(is.na(january_listings$last_scraped), "2025-01-01", january_listings$last_scraped),
+                                         tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+february_listings$last_scraped <- as.Date(ifelse(is.na(february_listings$last_scraped), "2025-02-01", february_listings$last_scraped),
+                                          tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+march_listings$last_scraped <- as.Date(ifelse(is.na(march_listings$last_scraped), "2025-03-01", march_listings$last_scraped),
+                                       tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+april_listings$last_scraped <- as.Date(ifelse(is.na(april_listings$last_scraped), "2025-04-01", april_listings$last_scraped),
+                                       tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+may_listings$last_scraped <- as.Date(ifelse(is.na(may_listings$last_scraped), "2025-05-01", may_listings$last_scraped),
+                                     tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+june_listings$last_scraped <- as.Date(ifelse(is.na(june_listings$last_scraped), "2025-06-01", june_listings$last_scraped),
+                                      tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+```
+
+The following code standardizes two date-related columns across all monthly Airbnb listings datasets:
+
+1.  **`calendar_last_scraped`** –\
+    Missing values are replaced with the first day of the dataset’s respective month and year.\
+    All entries are then converted into a consistent `Date` format.
+
+2.  **`first_review`** –\
+    All existing values are parsed into a standardized `Date` format without replacing missing values,\
+    ensuring uniformity for chronological and time-series analyses.
+
+This standardization enables accurate comparison and aggregation of time-based fields across months.
+
+```{r}
+# ---------------- CALENDAR_LAST_SCRAPED ----------------
+july_listings$calendar_last_scraped <- as.Date(ifelse(is.na(july_listings$calendar_last_scraped), "2024-07-01", july_listings$calendar_last_scraped),
+                                               tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+august_listings$calendar_last_scraped <- as.Date(ifelse(is.na(august_listings$calendar_last_scraped), "2024-08-01", august_listings$calendar_last_scraped),
+                                                 tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+september_listings$calendar_last_scraped <- as.Date(ifelse(is.na(september_listings$calendar_last_scraped), "2024-09-01", september_listings$calendar_last_scraped),
+                                                    tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+october_listings$calendar_last_scraped <- as.Date(ifelse(is.na(october_listings$calendar_last_scraped), "2024-10-01", october_listings$calendar_last_scraped),
+                                                  tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+november_listings$calendar_last_scraped <- as.Date(ifelse(is.na(november_listings$calendar_last_scraped), "2024-11-01", november_listings$calendar_last_scraped),
+                                                   tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+december_listings$calendar_last_scraped <- as.Date(ifelse(is.na(december_listings$calendar_last_scraped), "2024-12-01", december_listings$calendar_last_scraped),
+                                                   tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+january_listings$calendar_last_scraped <- as.Date(ifelse(is.na(january_listings$calendar_last_scraped), "2025-01-01", january_listings$calendar_last_scraped),
+                                                  tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+february_listings$calendar_last_scraped <- as.Date(ifelse(is.na(february_listings$calendar_last_scraped), "2025-02-01", february_listings$calendar_last_scraped),
+                                                   tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+march_listings$calendar_last_scraped <- as.Date(ifelse(is.na(march_listings$calendar_last_scraped), "2025-03-01", march_listings$calendar_last_scraped),
+                                                tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+april_listings$calendar_last_scraped <- as.Date(ifelse(is.na(april_listings$calendar_last_scraped), "2025-04-01", april_listings$calendar_last_scraped),
+                                                tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+may_listings$calendar_last_scraped <- as.Date(ifelse(is.na(may_listings$calendar_last_scraped), "2025-05-01", may_listings$calendar_last_scraped),
+                                              tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+june_listings$calendar_last_scraped <- as.Date(ifelse(is.na(june_listings$calendar_last_scraped), "2025-06-01", june_listings$calendar_last_scraped),
+                                               tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+
+```
+
+The following code standardizes the `last_review and first_review` column for each monthly Airbnb listings dataset.\
+It converts all existing values into a consistent `Date` format without altering missing entries,\
+ensuring uniformity for chronological sorting, filtering, and time-series analysis across all months.
+
+```{r}
+#####################################################
+# ---------------- FIRST_REVIEW ----------------
+july_listings$first_review      <- as.Date(july_listings$first_review,      tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+august_listings$first_review    <- as.Date(august_listings$first_review,    tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+september_listings$first_review <- as.Date(september_listings$first_review, tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+october_listings$first_review   <- as.Date(october_listings$first_review,   tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+november_listings$first_review  <- as.Date(november_listings$first_review,  tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+december_listings$first_review  <- as.Date(december_listings$first_review,  tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+january_listings$first_review   <- as.Date(january_listings$first_review,   tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+february_listings$first_review  <- as.Date(february_listings$first_review,  tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+march_listings$first_review     <- as.Date(march_listings$first_review,     tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+april_listings$first_review     <- as.Date(april_listings$first_review,     tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+may_listings$first_review       <- as.Date(may_listings$first_review,       tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+june_listings$first_review      <- as.Date(june_listings$first_review,      tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+##################################################
+# ---------------- LAST_REVIEW ----------------
+july_listings$last_review      <- as.Date(july_listings$last_review,      tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+august_listings$last_review    <- as.Date(august_listings$last_review,    tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+september_listings$last_review <- as.Date(september_listings$last_review, tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+october_listings$last_review   <- as.Date(october_listings$last_review,   tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+november_listings$last_review  <- as.Date(november_listings$last_review,  tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+december_listings$last_review  <- as.Date(december_listings$last_review,  tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+january_listings$last_review   <- as.Date(january_listings$last_review,   tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+february_listings$last_review  <- as.Date(february_listings$last_review,  tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+march_listings$last_review     <- as.Date(march_listings$last_review,     tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+april_listings$last_review     <- as.Date(april_listings$last_review,     tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+may_listings$last_review       <- as.Date(may_listings$last_review,       tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+june_listings$last_review      <- as.Date(june_listings$last_review,      tryFormats = c("%Y-%m-%d", "%d-%m-%Y"))
+
+```
+
+The following code performs two key data cleaning steps across all monthly Airbnb listings datasets:
+
+1.  **Price Cleaning and Conversion** –\
+    Removes dollar signs (`$`) and commas from the `price` column,\
+    then converts the cleaned values to numeric format to enable calculations and statistical analysis.
+
+2.  **Removing Irrelevant Column** –\
+    Deletes the `source` column from each dataset, as it is considered unnecessary for the analysis,\
+    helping to simplify the data structure and reduce clutter.
+
+```{r}
+#Stripping '$' from Price and then converting to str
+
+july_listings$price      <- as.numeric(gsub("[$,]", "", july_listings$price))
+august_listings$price    <- as.numeric(gsub("[$,]", "", august_listings$price))
+september_listings$price <- as.numeric(gsub("[$,]", "", september_listings$price))
+october_listings$price   <- as.numeric(gsub("[$,]", "", october_listings$price))
+november_listings$price  <- as.numeric(gsub("[$,]", "", november_listings$price))
+december_listings$price  <- as.numeric(gsub("[$,]", "", december_listings$price))
+january_listings$price   <- as.numeric(gsub("[$,]", "", january_listings$price))
+february_listings$price  <- as.numeric(gsub("[$,]", "", february_listings$price))
+march_listings$price     <- as.numeric(gsub("[$,]", "", march_listings$price))
+april_listings$price     <- as.numeric(gsub("[$,]", "", april_listings$price))
+may_listings$price       <- as.numeric(gsub("[$,]", "", may_listings$price))
+june_listings$price      <- as.numeric(gsub("[$,]", "", june_listings$price))
+
+#########################################################
+#Removing Source
+
+july_listings$source      <- NULL
+august_listings$source    <- NULL
+september_listings$source <- NULL
+october_listings$source   <- NULL
+november_listings$source  <- NULL
+december_listings$source  <- NULL
+january_listings$source   <- NULL
+february_listings$source  <- NULL
+march_listings$source     <- NULL
+april_listings$source     <- NULL
+may_listings$source       <- NULL
+june_listings$source      <- NULL
+```
+
+The following code ensures that each monthly Airbnb listings dataset contains four key revenue-related columns:
+
+-   `availability_eoy` – Availability at the end of the year\
+-   `number_of_reviews_ly` – Number of reviews in the last year\
+-   `estimated_occupancy_l365d` – Estimated occupancy rate over the last 365 days\
+-   `estimated_revenue_l365d` – Estimated revenue over the last 365 days
+
+If any of these columns are missing from a dataset, they are created and filled with `NA` values.\
+This guarantees a consistent structure across all months, enabling smooth data merging and comparative analysis.
+
+```{r}
+#Add the Revenue Columns
+
+if(!"availability_eoy" %in% colnames(july_listings))      july_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(july_listings))  july_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(july_listings)) july_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(july_listings))   july_listings$estimated_revenue_l365d <- NA
+
+if(!"availability_eoy" %in% colnames(august_listings))      august_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(august_listings))  august_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(august_listings)) august_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(august_listings))   august_listings$estimated_revenue_l365d <- NA
+
+if(!"availability_eoy" %in% colnames(september_listings))      september_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(september_listings))  september_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(september_listings)) september_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(september_listings))   september_listings$estimated_revenue_l365d <- NA
+
+if(!"availability_eoy" %in% colnames(october_listings))      october_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(october_listings))  october_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(october_listings)) october_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(october_listings))   october_listings$estimated_revenue_l365d <- NA
+
+if(!"availability_eoy" %in% colnames(november_listings))      november_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(november_listings))  november_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(november_listings)) november_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(november_listings))   november_listings$estimated_revenue_l365d <- NA
+
+if(!"availability_eoy" %in% colnames(december_listings))      december_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(december_listings))  december_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(december_listings)) december_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(december_listings))   december_listings$estimated_revenue_l365d <- NA
+
+if(!"availability_eoy" %in% colnames(january_listings))      january_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(january_listings))  january_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(january_listings)) january_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(january_listings))   january_listings$estimated_revenue_l365d <- NA
+
+if(!"availability_eoy" %in% colnames(february_listings))      february_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(february_listings))  february_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(february_listings)) february_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(february_listings))   february_listings$estimated_revenue_l365d <- NA
+
+if(!"availability_eoy" %in% colnames(march_listings))      march_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(march_listings))  march_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(march_listings)) march_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(march_listings))   march_listings$estimated_revenue_l365d <- NA
+
+if(!"availability_eoy" %in% colnames(april_listings))      april_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(april_listings))  april_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(april_listings)) april_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(april_listings))   april_listings$estimated_revenue_l365d <- NA
+
+if(!"availability_eoy" %in% colnames(may_listings))      may_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(may_listings))  may_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(may_listings)) may_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(may_listings))   may_listings$estimated_revenue_l365d <- NA
+
+if(!"availability_eoy" %in% colnames(june_listings))      june_listings$availability_eoy <- NA
+if(!"number_of_reviews_ly" %in% colnames(june_listings))  june_listings$number_of_reviews_ly <- NA
+if(!"estimated_occupancy_l365d" %in% colnames(june_listings)) june_listings$estimated_occupancy_l365d <- NA
+if(!"estimated_revenue_l365d" %in% colnames(june_listings))   june_listings$estimated_revenue_l365d <- NA
+
+```
+
+The following code standardizes the `host_is_superhost` column in each monthly Airbnb listings dataset by converting string values to logical format:
+
+-   `"t"` is converted to `TRUE`\
+-   `"f"` is converted to `FALSE`\
+-   Any other value, including missing entries, is set to `NA`
+
+This ensures consistent boolean representation of the superhost status across all months, enabling accurate filtering, aggregation, and analysis.
+
+```{r}
+# host_is_superhost changed to logic
+
+july_listings$host_is_superhost      <- ifelse(july_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(july_listings$host_is_superhost == "f", FALSE, NA))
+august_listings$host_is_superhost    <- ifelse(august_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(august_listings$host_is_superhost == "f", FALSE, NA))
+september_listings$host_is_superhost <- ifelse(september_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(september_listings$host_is_superhost == "f", FALSE, NA))
+october_listings$host_is_superhost   <- ifelse(october_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(october_listings$host_is_superhost == "f", FALSE, NA))
+november_listings$host_is_superhost  <- ifelse(november_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(november_listings$host_is_superhost == "f", FALSE, NA))
+december_listings$host_is_superhost  <- ifelse(december_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(december_listings$host_is_superhost == "f", FALSE, NA))
+january_listings$host_is_superhost   <- ifelse(january_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(january_listings$host_is_superhost == "f", FALSE, NA))
+february_listings$host_is_superhost  <- ifelse(february_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(february_listings$host_is_superhost == "f", FALSE, NA))
+march_listings$host_is_superhost     <- ifelse(march_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(march_listings$host_is_superhost == "f", FALSE, NA))
+april_listings$host_is_superhost     <- ifelse(april_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(april_listings$host_is_superhost == "f", FALSE, NA))
+may_listings$host_is_superhost       <- ifelse(may_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(may_listings$host_is_superhost == "f", FALSE, NA))
+june_listings$host_is_superhost      <- ifelse(june_listings$host_is_superhost == "t", TRUE,
+                                               ifelse(june_listings$host_is_superhost == "f", FALSE, NA))
+
+```
+
+The following code checks the data type of the `price` column across all monthly Airbnb listings datasets.\
+It uses `sapply()` to iterate through a named list of datasets (one per month) and returns the class of the `price` column for each,\
+allowing verification that prices are stored in a consistent numeric format after cleaning.
+
+```{r}
+#check price data type
+sapply(
+  list(
+    july       = july_listings,
+    august     = august_listings,
+    september  = september_listings,
+    october    = october_listings,
+    november   = november_listings,
+    december   = december_listings,
+    january    = january_listings,
+    february   = february_listings,
+    march      = march_listings,
+    april      = april_listings,
+    may        = may_listings,
+    june       = june_listings
+  ),
+  function(df) class(df$price)
+)
+
+```
+
+The following code converts the `region_parent_name` column in each monthly Airbnb listings dataset to character type.\
+This ensures consistency in how the parent region names are stored, preventing issues during string operations, comparisons, or dataset merging.
+
+```{r}
+#region_parent_name to char 
+july_listings$region_parent_name       <- as.character(july_listings$region_parent_name)
+august_listings$region_parent_name     <- as.character(august_listings$region_parent_name)
+september_listings$region_parent_name  <- as.character(september_listings$region_parent_name)
+october_listings$region_parent_name    <- as.character(october_listings$region_parent_name)
+november_listings$region_parent_name   <- as.character(november_listings$region_parent_name)
+december_listings$region_parent_name   <- as.character(december_listings$region_parent_name)
+january_listings$region_parent_name    <- as.character(january_listings$region_parent_name)
+february_listings$region_parent_name   <- as.character(february_listings$region_parent_name)
+march_listings$region_parent_name      <- as.character(march_listings$region_parent_name)
+april_listings$region_parent_name      <- as.character(april_listings$region_parent_name)
+may_listings$region_parent_name        <- as.character(may_listings$region_parent_name)
+june_listings$region_parent_name       <- as.character(june_listings$region_parent_name)
+
+
+```
+
+The following code adds a `month` column to each monthly Airbnb listings dataset,\
+assigning the corresponding year–month label (e.g., `"2024-07"` for July 2024).\
+This tagging preserves the temporal context of each dataset, making it easier to group, filter, and analyze data by month after combining datasets.
+
+```{r}
+library(dplyr)
+
+# Optional: tag each with its month (helpful later)
+july_listings$month       <- "2024-07"
+august_listings$month     <- "2024-08"
+september_listings$month  <- "2024-09"
+october_listings$month    <- "2024-10"
+november_listings$month   <- "2024-11"
+december_listings$month   <- "2024-12"
+january_listings$month    <- "2025-01"
+february_listings$month   <- "2025-02"
+march_listings$month      <- "2025-03"
+april_listings$month      <- "2025-04"
+may_listings$month        <- "2025-05"
+june_listings$month       <- "2025-06"
+
+```
+
+The following code performs detailed data cleaning and transformation for each monthly Airbnb listings dataset, covering three main areas:
+
+1.  **Amenity Count** –
+    -   Removes curly braces from the `amenities` column.\
+    -   Splits the string into individual amenities and counts them.\
+    -   Creates a numeric `amenity_count` column, assigning `0` if the field is empty or missing.
+2.  **Rate Conversion (Percent to Numeric)** –
+    -   Converts `host_response_rate` and `host_acceptance_rate` from percentage strings (e.g., `"85%"`) into numeric values for analysis.
+3.  **Boolean Conversion** –
+    -   Converts `has_availability` and `instant_bookable` from `"t"`/`"f"` to logical `TRUE`/`FALSE` values.\
+    -   Uses `table()` to display frequency counts, including missing values, for verification.
+
+These transformations standardize formats, ensure consistent data types, and prepare the datasets for reliable analysis across all months.
+
+```{r}
+##########################################
+## ---------------- JANUARY ----------------
+# Amenity count
+jan_amen <- gsub("[\\{\\}]", "", january_listings$amenities)
+january_listings$amenity_count <- ifelse(is.na(jan_amen) | jan_amen=="", 0L, lengths(strsplit(jan_amen, ",")))
+summary(january_listings$amenity_count)
+
+# Rates (% → numeric)
+january_listings$host_response_rate  <- as.numeric(gsub("%","", january_listings$host_response_rate))
+january_listings$host_acceptance_rate<- as.numeric(gsub("%","", january_listings$host_acceptance_rate))
+summary(january_listings$host_response_rate)
+summary(january_listings$host_acceptance_rate)
+
+# Booleans
+january_listings$has_availability  <- january_listings$has_availability  == "t"
+january_listings$instant_bookable  <- january_listings$instant_bookable  == "t"
+table(january_listings$has_availability,  useNA="ifany")
+table(january_listings$instant_bookable,  useNA="ifany")
+
+## ---------------- FEBRUARY ----------------
+feb_amen <- gsub("[\\{\\}]", "", february_listings$amenities)
+
+february_listings$amenity_count <- ifelse(is.na(feb_amen) | feb_amen=="", 0L, lengths(strsplit(feb_amen, ",")))
+summary(february_listings$amenity_count)
+
+february_listings$host_response_rate   <- as.numeric(gsub("%","", february_listings$host_response_rate))
+february_listings$host_acceptance_rate <- as.numeric(gsub("%","", february_listings$host_acceptance_rate))
+summary(february_listings$host_response_rate)
+summary(february_listings$host_acceptance_rate)
+
+february_listings$has_availability <- february_listings$has_availability == "t"
+february_listings$instant_bookable <- february_listings$instant_bookable == "t"
+table(february_listings$has_availability, useNA="ifany")
+table(february_listings$instant_bookable, useNA="ifany")
+
+## ---------------- MARCH ----------------
+mar_amen <- gsub("[\\{\\}]", "", march_listings$amenities)
+march_listings$amenity_count <- ifelse(is.na(mar_amen) | mar_amen=="", 0L, lengths(strsplit(mar_amen, ",")))
+summary(march_listings$amenity_count)
+
+march_listings$host_response_rate   <- as.numeric(gsub("%","", march_listings$host_response_rate))
+march_listings$host_acceptance_rate <- as.numeric(gsub("%","", march_listings$host_acceptance_rate))
+summary(march_listings$host_response_rate)
+summary(march_listings$host_acceptance_rate)
+
+march_listings$has_availability <- march_listings$has_availability == "t"
+march_listings$instant_bookable <- march_listings$instant_bookable == "t"
+table(march_listings$has_availability, useNA="ifany")
+table(march_listings$instant_bookable, useNA="ifany")
+
+## ---------------- APRIL ----------------
+apr_amen <- gsub("[\\{\\}]", "", april_listings$amenities)
+april_listings$amenity_count <- ifelse(is.na(apr_amen) | apr_amen=="", 0L, lengths(strsplit(apr_amen, ",")))
+summary(april_listings$amenity_count)
+
+april_listings$host_response_rate   <- as.numeric(gsub("%","", april_listings$host_response_rate))
+april_listings$host_acceptance_rate <- as.numeric(gsub("%","", april_listings$host_acceptance_rate))
+summary(april_listings$host_response_rate)
+summary(april_listings$host_acceptance_rate)
+
+april_listings$has_availability <- april_listings$has_availability == "t"
+april_listings$instant_bookable <- april_listings$instant_bookable == "t"
+table(april_listings$has_availability, useNA="ifany")
+table(april_listings$instant_bookable, useNA="ifany")
+
+## ---------------- MAY ----------------
+may_amen <- gsub("[\\{\\}]", "", may_listings$amenities)
+may_listings$amenity_count <- ifelse(is.na(may_amen) | may_amen=="", 0L, lengths(strsplit(may_amen, ",")))
+summary(may_listings$amenity_count)
+
+may_listings$host_response_rate   <- as.numeric(gsub("%","", may_listings$host_response_rate))
+may_listings$host_acceptance_rate <- as.numeric(gsub("%","", may_listings$host_acceptance_rate))
+summary(may_listings$host_response_rate)
+summary(may_listings$host_acceptance_rate)
+
+may_listings$has_availability <- may_listings$has_availability == "t"
+may_listings$instant_bookable <- may_listings$instant_bookable == "t"
+table(may_listings$has_availability, useNA="ifany")
+table(may_listings$instant_bookable, useNA="ifany")
+
+## ---------------- JUNE ----------------
+jun_amen <- gsub("[\\{\\}]", "", june_listings$amenities)
+june_listings$amenity_count <- ifelse(is.na(jun_amen) | jun_amen=="", 0L, lengths(strsplit(jun_amen, ",")))
+summary(june_listings$amenity_count)
+
+june_listings$host_response_rate   <- as.numeric(gsub("%","", june_listings$host_response_rate))
+june_listings$host_acceptance_rate <- as.numeric(gsub("%","", june_listings$host_acceptance_rate))
+summary(june_listings$host_response_rate)
+summary(june_listings$host_acceptance_rate)
+
+june_listings$has_availability <- june_listings$has_availability == "t"
+june_listings$instant_bookable <- june_listings$instant_bookable == "t"
+table(june_listings$has_availability, useNA="ifany")
+table(june_listings$instant_bookable, useNA="ifany")
+
+## ---------------- JULY ----------------
+jul_amen <- gsub("[\\{\\}]", "", july_listings$amenities)
+july_listings$amenity_count <- ifelse(is.na(jul_amen) | jul_amen=="", 0L, lengths(strsplit(jul_amen, ",")))
+summary(july_listings$amenity_count)
+
+july_listings$host_response_rate   <- as.numeric(gsub("%","", july_listings$host_response_rate))
+july_listings$host_acceptance_rate <- as.numeric(gsub("%","", july_listings$host_acceptance_rate))
+summary(july_listings$host_response_rate)
+summary(july_listings$host_acceptance_rate)
+
+july_listings$has_availability <- july_listings$has_availability == "t"
+july_listings$instant_bookable <- july_listings$instant_bookable == "t"
+table(july_listings$has_availability, useNA="ifany")
+table(july_listings$instant_bookable, useNA="ifany")
+
+## ---------------- AUGUST ----------------
+aug_amen <- gsub("[\\{\\}]", "", august_listings$amenities)
+august_listings$amenity_count <- ifelse(is.na(aug_amen) | aug_amen=="", 0L, lengths(strsplit(aug_amen, ",")))
+summary(august_listings$amenity_count)
+
+august_listings$host_response_rate   <- as.numeric(gsub("%","", august_listings$host_response_rate))
+august_listings$host_acceptance_rate <- as.numeric(gsub("%","", august_listings$host_acceptance_rate))
+summary(august_listings$host_response_rate)
+summary(august_listings$host_acceptance_rate)
+
+august_listings$has_availability <- august_listings$has_availability == "t"
+august_listings$instant_bookable <- august_listings$instant_bookable == "t"
+table(august_listings$has_availability, useNA="ifany")
+table(august_listings$instant_bookable, useNA="ifany")
+
+## ---------------- SEPTEMBER ----------------
+sep_amen <- gsub("[\\{\\}]", "", september_listings$amenities)
+september_listings$amenity_count <- ifelse(is.na(sep_amen) | sep_amen=="", 0L, lengths(strsplit(sep_amen, ",")))
+summary(september_listings$amenity_count)
+
+september_listings$host_response_rate   <- as.numeric(gsub("%","", september_listings$host_response_rate))
+september_listings$host_acceptance_rate <- as.numeric(gsub("%","", september_listings$host_acceptance_rate))
+summary(september_listings$host_response_rate)
+summary(september_listings$host_acceptance_rate)
+
+september_listings$has_availability <- september_listings$has_availability == "t"
+september_listings$instant_bookable <- september_listings$instant_bookable == "t"
+table(september_listings$has_availability, useNA="ifany")
+table(september_listings$instant_bookable, useNA="ifany")
+
+## ---------------- OCTOBER ----------------
+oct_amen <- gsub("[\\{\\}]", "", october_listings$amenities)
+october_listings$amenity_count <- ifelse(is.na(oct_amen) | oct_amen=="", 0L, lengths(strsplit(oct_amen, ",")))
+summary(october_listings$amenity_count)
+
+october_listings$host_response_rate   <- as.numeric(gsub("%","", october_listings$host_response_rate))
+october_listings$host_acceptance_rate <- as.numeric(gsub("%","", october_listings$host_acceptance_rate))
+summary(october_listings$host_response_rate)
+summary(october_listings$host_acceptance_rate)
+
+october_listings$has_availability <- october_listings$has_availability == "t"
+october_listings$instant_bookable <- october_listings$instant_bookable == "t"
+table(october_listings$has_availability, useNA="ifany")
+table(october_listings$instant_bookable, useNA="ifany")
+
+## ---------------- NOVEMBER ----------------
+nov_amen <- gsub("[\\{\\}]", "", november_listings$amenities)
+november_listings$amenity_count <- ifelse(is.na(nov_amen) | nov_amen=="", 0L, lengths(strsplit(nov_amen, ",")))
+summary(november_listings$amenity_count)
+
+november_listings$host_response_rate   <- as.numeric(gsub("%","", november_listings$host_response_rate))
+november_listings$host_acceptance_rate <- as.numeric(gsub("%","", november_listings$host_acceptance_rate))
+summary(november_listings$host_response_rate)
+summary(november_listings$host_acceptance_rate)
+
+november_listings$has_availability <- november_listings$has_availability == "t"
+november_listings$instant_bookable <- november_listings$instant_bookable == "t"
+table(november_listings$has_availability, useNA="ifany")
+table(november_listings$instant_bookable, useNA="ifany")
+
+## ---------------- DECEMBER ----------------
+dec_amen <- gsub("[\\{\\}]", "", december_listings$amenities)
+december_listings$amenity_count <- ifelse(is.na(dec_amen) | dec_amen=="", 0L, lengths(strsplit(dec_amen, ",")))
+summary(december_listings$amenity_count)
+
+december_listings$host_response_rate   <- as.numeric(gsub("%","", december_listings$host_response_rate))
+december_listings$host_acceptance_rate <- as.numeric(gsub("%","", december_listings$host_acceptance_rate))
+summary(december_listings$host_response_rate)
+summary(december_listings$host_acceptance_rate)
+
+december_listings$has_availability <- december_listings$has_availability == "t"
+december_listings$instant_bookable <- december_listings$instant_bookable == "t"
+table(december_listings$has_availability, useNA="ifany")
+table(december_listings$instant_bookable, useNA="ifany")
+
+```
+
+This code converts the `host_since` column in all monthly Airbnb listings data frames from character format to proper `Date` format.
+
+1.  **Create a list of data frames**
+    -   `mget()` retrieves the data frames for each month (`january_listings` to `december_listings`) from the global environment and stores them in a named list `month_dfs`.
+2.  **Apply date conversion to each data frame**
+    -   `lapply()` loops over each data frame in `month_dfs`.\
+    -   Inside the loop, `as.Date(df$host_since)` converts the `host_since` column into a date object for correct date handling and analysis.
+3.  **Return updated data frames**
+    -   Each modified data frame is returned by `lapply()` with the updated `host_since` column.
+4.  **Overwrite original data frames in the global environment**
+    -   `list2env()` takes the updated list of data frames and assigns them back to their original variable names in the global environment.
+
+**Purpose:**\
+This ensures that the `host_since` column is in the correct date format for all months, allowing for accurate time-based calculations, sorting, and visualizations.
+
+```{r}
+#converting host_since to date
+
+january_listings$host_since   <- as.Date(january_listings$host_since)
+february_listings$host_since  <- as.Date(february_listings$host_since)
+march_listings$host_since     <- as.Date(march_listings$host_since)
+april_listings$host_since     <- as.Date(april_listings$host_since)
+may_listings$host_since       <- as.Date(may_listings$host_since)
+june_listings$host_since      <- as.Date(june_listings$host_since)
+july_listings$host_since      <- as.Date(july_listings$host_since)
+august_listings$host_since    <- as.Date(august_listings$host_since)
+september_listings$host_since <- as.Date(september_listings$host_since)
+october_listings$host_since   <- as.Date(october_listings$host_since)
+november_listings$host_since  <- as.Date(november_listings$host_since)
+december_listings$host_since  <- as.Date(december_listings$host_since)
+```
+
+This code removes two unnecessary columns from all monthly Airbnb listings data frames.
+
+1.  **Remove `host_has_profile_pic`**
+    -   For each month’s data frame (`january_listings` to `december_listings`), the column `host_has_profile_pic` is set to `NULL`, which deletes it from the data frame.
+2.  **Remove `host_identity_verified`**
+    -   Similarly, the column `host_identity_verified` is removed from each monthly data frame.
+
+**Purpose:**\
+These columns are dropped because they are either redundant, not required for analysis, or have already served their purpose in earlier processing steps, helping to reduce dataset size and improve processing efficiency.
+
+```{r}
+#Drop host_has_profile
+
+january_listings$host_has_profile_pic   <- NULL
+february_listings$host_has_profile_pic  <- NULL
+march_listings$host_has_profile_pic     <- NULL
+april_listings$host_has_profile_pic     <- NULL
+may_listings$host_has_profile_pic       <- NULL
+june_listings$host_has_profile_pic      <- NULL
+july_listings$host_has_profile_pic      <- NULL
+august_listings$host_has_profile_pic    <- NULL
+september_listings$host_has_profile_pic <- NULL
+october_listings$host_has_profile_pic   <- NULL
+november_listings$host_has_profile_pic  <- NULL
+december_listings$host_has_profile_pic  <- NULL
+
+
+#Dropping host_identity_verified
+
+january_listings$host_identity_verified   <- NULL
+february_listings$host_identity_verified  <- NULL
+march_listings$host_identity_verified     <- NULL
+april_listings$host_identity_verified     <- NULL
+may_listings$host_identity_verified       <- NULL
+june_listings$host_identity_verified      <- NULL
+july_listings$host_identity_verified      <- NULL
+august_listings$host_identity_verified    <- NULL
+september_listings$host_identity_verified <- NULL
+october_listings$host_identity_verified   <- NULL
+november_listings$host_identity_verified  <- NULL
+december_listings$host_identity_verified  <- NULL
+```
+
+This code converts two location-related columns to integers for all monthly Airbnb listings datasets.
+
+1.  **Convert `region_id` to integer**
+    -   For each month’s dataset (`january_listings` to `december_listings`), the `region_id` column is cast to integer using `as.integer()`.
+    -   This ensures that region identifiers are stored in a numeric format, which can improve performance in joins, filtering, or grouping operations.
+2.  **Convert `region_parent_id` to integer**
+    -   Similarly, the `region_parent_id` column in each monthly dataset is converted to integer.
+    -   This helps standardize the data type for parent region identifiers, maintaining consistency across all months.
+
+**Purpose:**\
+The conversion to integer optimizes storage, prevents type mismatches in analysis, and ensures both `region_id` and `region_parent_id` are in the correct numeric format for subsequent data processing.
+
+```{r}
+#Converting region_id to Integer
+january_listings$region_id   <- as.integer(january_listings$region_id)
+february_listings$region_id  <- as.integer(february_listings$region_id)
+march_listings$region_id     <- as.integer(march_listings$region_id)
+april_listings$region_id     <- as.integer(april_listings$region_id)
+may_listings$region_id       <- as.integer(may_listings$region_id)
+june_listings$region_id      <- as.integer(june_listings$region_id)
+july_listings$region_id      <- as.integer(july_listings$region_id)
+august_listings$region_id    <- as.integer(august_listings$region_id)
+september_listings$region_id <- as.integer(september_listings$region_id)
+october_listings$region_id   <- as.integer(october_listings$region_id)
+november_listings$region_id  <- as.integer(november_listings$region_id)
+december_listings$region_id  <- as.integer(december_listings$region_id)
+
+#Converting region_parent_id
+january_listings$region_parent_id   <- as.integer(january_listings$region_parent_id)
+february_listings$region_parent_id  <- as.integer(february_listings$region_parent_id)
+march_listings$region_parent_id     <- as.integer(march_listings$region_parent_id)
+april_listings$region_parent_id     <- as.integer(april_listings$region_parent_id)
+may_listings$region_parent_id       <- as.integer(may_listings$region_parent_id)
+june_listings$region_parent_id      <- as.integer(june_listings$region_parent_id)
+july_listings$region_parent_id      <- as.integer(july_listings$region_parent_id)
+august_listings$region_parent_id    <- as.integer(august_listings$region_parent_id)
+september_listings$region_parent_id <- as.integer(september_listings$region_parent_id)
+october_listings$region_parent_id   <- as.integer(october_listings$region_parent_id)
+november_listings$region_parent_id  <- as.integer(november_listings$region_parent_id)
+december_listings$region_parent_id  <- as.integer(december_listings$region_parent_id)
+
+```
+
+This code merges all monthly Airbnb listings datasets into a single dataset called `all_listings`.
+
+1.  **Load `dplyr` library**
+    -   The `dplyr` package is loaded to use its data manipulation functions, specifically `bind_rows()`.
+2.  **Combine datasets**
+    -   The `bind_rows()` function stacks the datasets from `january_listings` through `december_listings` into one data frame.
+    -   Unlike `rbind()`, `bind_rows()` automatically matches columns by name and fills in missing columns with `NA` if a dataset doesn’t contain them.
+
+**Purpose:**\
+Combining all months into `all_listings` creates a unified dataset for analysis, allowing operations such as filtering, summarizing, and visualizing trends across the entire year.
+
+```{r}
+library(dplyr)
+
+all_listings <- bind_rows(
+  january_listings,
+  february_listings,
+  march_listings,
+  april_listings,
+  may_listings,
+  june_listings,
+  july_listings,
+  august_listings,
+  september_listings,
+  october_listings,
+  november_listings,
+  december_listings
+)
+```
+
+EDA START
+
+This block prepares time-aware fields, global styling, and reusable helpers for monthly analysis and plotting.
+
+1)  Time features and ordering\
+
+-   Adds `month_date` as a real `Date` from the `month` string (YYYY-MM-01).\
+-   Relevels `month` as an ordered factor so plots and summaries follow calendar order.
+
+2)  Latest month helper\
+
+-   Finds the most recent `month_date` and stores both `Date` (`latest_month`) and `"YYYY-MM"` string (`latest_month_chr`) forms for downstream filters/labels.
+
+3)  Global theme\
+
+-   Sets a minimal ggplot theme (`theme_minimal(base_size = 12)`) for consistent styling across charts.
+
+4)  `summarise_monthly(df, var)`\
+
+-   For any numeric column `var`, groups by `month` and returns summary stats: mean, median, sd, min, max, non-NA count `n`.\
+-   Uses `.data[[var]]` for tidy-evaluation without hard-coding column names.
+
+5)  `plot_monthly_mean(df, var, ylab, title_prefix)`\
+
+-   Computes the monthly average of `var` and returns a simple line+point plot with informative titles/labels.
+
+6)  `plot_categorical_share(df, cat_var, top_n, title)`\
+
+-   Ranks categories of `cat_var` by overall frequency, keeps top `top_n`, lumps others to “Other”.\
+-   Calculates within-month shares and returns a stacked column chart of category proportions over months.\
+-   Uses `forcats::fct_lump_min` to ensure proper factor handling.
+
+7)  `%||%` infix\
+
+-   Small utility that returns the left value if not `NULL`, otherwise the right (useful for defaults).
+
+```{r}
+# Order month as a time-aware factor and cache a Date version
+all_listings <- all_listings %>%
+  mutate(
+    month_date = suppressWarnings(as.Date(paste0(month, "-01"))),
+    month      = factor(month, levels = sort(unique(month)))
+  )
+
+# Latest month helper (used for within-month histograms)
+latest_month <- all_listings %>%
+  summarise(x = max(month_date, na.rm = TRUE)) %>%
+  pull(x)
+latest_month_chr <- format(latest_month, "%Y-%m")
+
+# Global theme
+theme_set(theme_minimal(base_size = 12))
+
+# Helper: summarise any numeric variable by month
+summarise_monthly <- function(df, var) {
+  df %>%
+    group_by(month) %>%
+    summarise(
+      mean   = mean(.data[[var]], na.rm = TRUE),
+      median = median(.data[[var]], na.rm = TRUE),
+      sd     = sd(.data[[var]], na.rm = TRUE),
+      min    = suppressWarnings(min(.data[[var]], na.rm = TRUE)),
+      max    = suppressWarnings(max(.data[[var]], na.rm = TRUE)),
+      n      = sum(!is.na(.data[[var]])),
+      .groups = "drop"
+    )
+}
+
+# Helper: monthly mean line for any numeric var
+plot_monthly_mean <- function(df, var, ylab = var, title_prefix = "Average") {
+  df %>%
+    group_by(month) %>%
+    summarise(avg = mean(.data[[var]], na.rm = TRUE), .groups = "drop") %>%
+    ggplot(aes(x = month, y = avg, group = 1)) +
+    geom_line(linewidth = 1) +
+    geom_point(size = 2) +
+    labs(
+      title = paste(title_prefix, ylab, "per Month"),
+      x = "Month", y = paste("Average", ylab)
+    )
+}
+
+# Helper: stacked shares for categorical by month (with optional Top-N keep)
+plot_categorical_share <- function(df, cat_var, top_n = Inf, title = NULL) {
+  levs <- df %>%
+    filter(!is.na(.data[[cat_var]]), .data[[cat_var]] != "") %>%
+    count(!!sym(cat_var), sort = TRUE) %>%
+    pull(!!sym(cat_var))
+  keep <- if (is.infinite(top_n)) levs else head(levs, top_n)
+  
+  df %>%
+    mutate(
+      cat = if_else(.data[[cat_var]] %in% keep, .data[[cat_var]], "Other"),
+      cat = forcats::fct_lump_min(cat, min = 1)
+    ) %>%
+    count(month, cat, name = "count") %>%
+    group_by(month) %>%
+    mutate(share = count / sum(count)) %>%
+    ungroup() %>%
+    ggplot(aes(x = month, y = share, fill = cat)) +
+    geom_col() +
+    labs(
+      title = if (!is.null(title)) title else paste("Share of", cat_var, "by Month"),
+      x = "Month", y = "Proportion", fill = cat_var
+    )
+}
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+```
+
+This section analyzes **price and availability** over time.
+
+1)  Price statistics\
+
+-   `summarise_monthly(all_listings, "price")` computes monthly summary stats (mean, median, sd, min, max, n) for `price` and prints the table.
+
+2)  Price trends\
+
+-   `plot_monthly_mean(all_listings, "price", "Price (currency)", "Average")` draws a line chart of average price by month.\
+-   A separate bar chart (`avg_price`) visualizes average monthly price using `geom_col()`.
+
+3)  Availability windows\
+
+-   Four line charts show average availability over different windows: 30, 60, 90, and 365 days (`availability_30/60/90/365`).\
+-   Each uses `plot_monthly_mean()` to summarize and plot the monthly average, enabling comparison of short- vs long-horizon availability trends.
+
+```{r}
+# -------------------------------
+# 1) Price & Availability
+# -------------------------------
+
+# Table of monthly price stats (prints to console)
+price_stats <- summarise_monthly(all_listings, "price")
+print(price_stats)
+
+# Line: average price per month
+plot_monthly_mean(all_listings, "price", "Price (currency)", "Average")
+
+# Bar: average price per month
+avg_price <- all_listings %>%
+  group_by(month) %>%
+  summarise(mean_price = mean(price, na.rm = TRUE), .groups = "drop")
+ggplot(avg_price, aes(x = month, y = mean_price)) +
+  geom_col(fill = "steelblue") +
+  labs(title = "Average Price per Month", x = "Month", y = "Average Price")
+
+# Lines: availability windows
+plot_monthly_mean(all_listings, "availability_30",  "Availability (30d)")
+plot_monthly_mean(all_listings, "availability_60",  "Availability (60d)")
+plot_monthly_mean(all_listings, "availability_90",  "Availability (90d)")
+plot_monthly_mean(all_listings, "availability_365", "Availability (365d)")
+
+```
+
+This section explores **demand and review dynamics** across months.
+
+1)  Overall demand via reviews\
+
+-   `plot_monthly_mean(all_listings, "number_of_reviews", "Number of reviews")` plots the average **cumulative review count** per listing by month (proxy for listing tenure/popularity).\
+-   `plot_monthly_mean(all_listings, "reviews_per_month", "Reviews per month")` plots the average **recent review velocity**, a closer proxy for current demand.
+
+2)  Review quality sub-scores\
+
+-   Selects seven review sub-score columns, reshapes them to long format with `pivot_longer()`, and computes monthly means.\
+-   Produces a faceted line chart (`facet_wrap`) showing the monthly average for each sub-score (rating, accuracy, cleanliness, checkin, communication, location, value), allowing side-by-side comparison of guest experience dimensions over time.
+
+3)  Latest-month distribution\
+
+-   Filters to the **most recent month** (`latest_month_chr`) and draws a histogram of `number_of_reviews`, revealing the spread of review counts across listings in the latest period.
+
+Together, these visuals highlight seasonality in demand (volume and velocity of reviews) and track changes in guest satisfaction sub-scores.
+
+```{r}
+# -------------------------------
+# 2) Demand & Reviews
+# -------------------------------
+
+# Line: average number of reviews per month
+plot_monthly_mean(all_listings, "number_of_reviews", "Number of reviews")
+
+# Line: reviews per month metric
+plot_monthly_mean(all_listings, "reviews_per_month", "Reviews per month")
+
+# Lines (faceted): review sub-scores monthly averages
+score_cols <- c(
+  "review_scores_rating",
+  "review_scores_accuracy",
+  "review_scores_cleanliness",
+  "review_scores_checkin",
+  "review_scores_communication",
+  "review_scores_location",
+  "review_scores_value"
+)
+scores_long <- all_listings %>%
+  select(month, all_of(score_cols)) %>%
+  pivot_longer(-month, names_to = "score", values_to = "value")
+scores_long %>%
+  group_by(month, score) %>%
+  summarise(avg = mean(value, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(x = month, y = avg, group = score)) +
+  geom_line() +
+  facet_wrap(~ score, scales = "free_y") +
+  labs(title = "Average Review Sub-scores by Month", x = "Month", y = "Average score")
+
+# Histogram: distribution of reviews in latest month
+all_listings %>%
+  filter(month == latest_month_chr, !is.na(number_of_reviews)) %>%
+  ggplot(aes(x = number_of_reviews)) +
+  geom_histogram(bins = 40) +
+  labs(
+    title = paste("Distribution of Number of Reviews in", latest_month_chr),
+    x = "Number of reviews", y = "Count"
+  )
+```
+
+------------------------------------------------------------------------
+
+This block performs **data quality diagnostics** on the combined listings dataset.
+
+1)  Missing values (per variable)
+
+-   Counts `NA`s for every column, reshapes to a long table with columns `variable`, `missing`, and computes `pct_missing = missing / nrow(all_listings) * 100`.
+-   Sorts variables by highest missing percentage and prints the summary.
+-   Plots a horizontal bar chart of `% Missing` by variable.
+
+2)  Total missing values (entire dataset)
+
+-   Selects `all_listings_clean` if it exists, otherwise `all_listings`.
+-   Computes and prints the **total number of `NA` values** across the whole data frame.
+
+3)  Outlier detection (IQR method)
+
+-   Selects all numeric columns.
+-   For each numeric variable, computes Q1, Q3, and IQR, then counts observations outside `[Q1 − 1.5*IQR, Q3 + 1.5*IQR]`.
+-   Builds `outlier_df` with `variable` and `outlier_count`, sorted descending.
+-   Plots a horizontal bar chart of **outlier counts** by variable.
+
+**Purpose:** Quickly identify variables with heavy missingness and numeric fields with many outliers to prioritize cleaning and robust analysis.
+
+```{r}
+## Missing value summary
+missing_summary <- all_listings %>%
+  summarise(across(everything(), ~sum(is.na(.)), .names = "missing_{col}")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "missing") %>%
+  mutate(
+    variable = gsub("missing_", "", variable),
+    pct_missing = (missing / nrow(all_listings)) * 100
+  ) %>%
+  arrange(desc(pct_missing))
+
+print(missing_summary)
+
+# Plot: missing values
+ggplot(missing_summary, aes(x = reorder(variable, -pct_missing), y = pct_missing)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Percentage of Missing Values", x = "Variable", y = "% Missing")
+
+
+# Use cleaned dataset if available
+df <- if (exists("all_listings_clean")) all_listings_clean else all_listings
+
+# Total NA count
+total_na <- sum(is.na(df))
+
+cat("Total number of NA values in the dataset:", total_na, "\n")
+
+# Use cleaned dataset if available
+df <- if (exists("all_listings_clean")) all_listings_clean else all_listings
+
+# Total NA count
+total_na <- sum(is.na(df))
+
+cat("Total number of NA values in the dataset:", total_na, "\n")
+
+## Outlier detection (IQR)
+numeric_vars <- all_listings %>% select(where(is.numeric))
+outlier_counts <- sapply(numeric_vars, function(x) {
+  x <- na.omit(x)
+  Q1 <- quantile(x, 0.25)
+  Q3 <- quantile(x, 0.75)
+  IQR <- Q3 - Q1
+  sum(x < (Q1 - 1.5 * IQR) | x > (Q3 + 1.5 * IQR))
+})
+
+outlier_df <- data.frame(
+  variable = names(outlier_counts),
+  outlier_count = as.integer(outlier_counts)
+) %>% arrange(desc(outlier_count))
+
+print(outlier_df)
+
+# Plot: outlier counts
+ggplot(outlier_df, aes(x = reorder(variable, -outlier_count), y = outlier_count)) +
+  geom_col(fill = "tomato") +
+  coord_flip() +
+  labs(title = "Outlier Counts (IQR Method)", x = "Variable", y = "Count")
+
+```
+
+# **Monthly Summary Price Analysis**
+
+## **1. Load Libraries**
+
+Load `dplyr` for data manipulation and `ggplot2` for visualization.
+
+## **2. Create Monthly Summary Table**
+
+-   Check if `monthly_summary` already exists.
+-   If not, select `all_listings_clean` if available; otherwise use `all_listings`.
+-   Group data by `month_date` and calculate:
+    -   `n_listings`: Number of listings
+    -   `mean_price`: Average price
+    -   `median_price`: Median price
+    -   `avg_avail30`: Average 30-day availability
+    -   `avg_reviews_pm`: Average reviews per month
+    -   `avg_rating`: Average review score rating
+    -   `pct_superhost`: Percentage of hosts who are superhosts
+-   Arrange results by `month_date`.
+
+## **3. Define Shared Y-axis Limits**
+
+-   Calculate maximum values for:
+    -   Price (`yl_price`)
+    -   Listing count (`yl_count`)
+    -   Availability (`yl_avail30`)
+    -   Reviews per month (`yl_reviews`)
+-   Set them as shared y-limits for consistent scaling across plots.
+
+## **4. Plot Mean Price by Month**
+
+-   Use a line chart with points to show `mean_price` over `month_date`.
+-   Apply shared y-limit (`yl_price`) to ensure scale consistency.
+-   Add chart title and axis labels.
+-   Apply a minimal theme for a clean look.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# If you haven't created monthly_summary yet, run this first:
+if (!exists("monthly_summary")) {
+  df <- if (exists("all_listings_clean")) all_listings_clean else all_listings
+  monthly_summary <- df %>%
+    group_by( month_date) %>%
+    summarise(
+      n_listings       = n(),
+      mean_price       = mean(price, na.rm = TRUE),
+      median_price     = median(price, na.rm = TRUE),
+      avg_avail30      = mean(availability_30, na.rm = TRUE),
+      avg_reviews_pm   = mean(reviews_per_month, na.rm = TRUE),
+      avg_rating       = mean(review_scores_rating, na.rm = TRUE),
+      pct_superhost    = mean(host_is_superhost, na.rm = TRUE) * 100,
+      .groups = "drop"
+    ) %>%
+    arrange(month_date)
+}
+
+# Shared y-limits to avoid visual bias
+yl_price   <- c(0, max(monthly_summary$mean_price, monthly_summary$median_price, na.rm = TRUE))
+yl_count   <- c(0, max(monthly_summary$n_listings, na.rm = TRUE))
+yl_avail30 <- c(0, max(monthly_summary$avg_avail30, na.rm = TRUE))
+yl_reviews <- c(0, max(monthly_summary$avg_reviews_pm, na.rm = TRUE))
+
+#Enhanced
+library(ggplot2)
+
+ggplot(monthly_summary, aes(month_date, mean_price, group = 1)) +
+  geom_line(linewidth = 1.2, color = "#1F78B4") +   # Line
+  geom_point(shape = 21, size = 3.8, stroke = 1.1,  # Points
+             fill = "#FF5A5F", color = "#1F78B4") +
+  coord_cartesian(ylim = yl_price) +
+  labs(
+    title = "Average Price by Month",
+    x = "Month",
+    y = "Mean Price($)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank(),
+    panel.border = element_rect(color = "#2B2B2B", fill = NA, linewidth = 0.8),
+    axis.line = element_line(color = "#2B2B2B", linewidth = 0.6),
+    axis.ticks = element_line(color = "#2B2B2B"),
+    axis.title = element_text(face = "bold", color = "#2B2B2B"),
+    axis.text  = element_text(color = "#2B2B2B"),
+    plot.title = element_text(face = "bold", hjust = 0.5, color = "#2B2B2B")
+  )
+
+
+```
+
+# **Enhanced Monthly Price Trend Plot**
+
+## **1. Load Library**
+
+-   `ggplot2`: For creating elegant and customizable data visualizations.
+
+## **2. Create Enhanced Line Plot**
+
+-   **Data**: `monthly_summary`
+-   **Mapping**: `month_date` (x-axis) vs `mean_price` (y-axis), grouped by 1 to ensure connection of points.
+
+## **3. Add Layers**
+
+-   `geom_line()`:
+    -   `linewidth = 1.2`
+    -   `color = "#1F78B4"` (Blue tone for line)
+-   `geom_point()`:
+    -   `shape = 21` (filled circle with border)
+    -   `size = 3.8`
+    -   `stroke = 1.1`
+    -   `fill = "#FF5A5F"` (Red tone fill)
+    -   `color = "#1F78B4"` (Blue border)
+
+## **4. Coordinate Limits**
+
+-   `coord_cartesian(ylim = yl_price)` ensures consistent y-axis range.
+
+## **5. Labels**
+
+-   Title: `"Average Price by Month"`
+-   X-axis: `"Month"`
+-   Y-axis: `"Mean Price($)"`
+
+## **6. Theme Customization**
+
+-   `theme_minimal(base_size = 14)` for clean base style.
+-   Remove all gridlines: `panel.grid = element_blank()`.
+-   Remove default background: `panel.background` & `plot.background` set to blank.
+-   Add border: `panel.border = element_rect()` with dark gray color.
+-   Customize axis lines, ticks, and text colors (`#2B2B2B`).
+-   Bold and center-align plot title.
+
+```{r}
+#Enhanced
+library(ggplot2)
+
+ggplot(monthly_summary, aes(month_date, mean_price, group = 1)) +
+  geom_line(linewidth = 1.2, color = "#1F78B4") +   # Line
+  geom_point(shape = 21, size = 3.8, stroke = 1.1,  # Points
+             fill = "#FF5A5F", color = "#1F78B4") +
+  coord_cartesian(ylim = yl_price) +
+  labs(
+    title = "Average Price by Month",
+    x = "Month",
+    y = "Mean Price($)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank(),
+    panel.border = element_rect(color = "#2B2B2B", fill = NA, linewidth = 0.8),
+    axis.line = element_line(color = "#2B2B2B", linewidth = 0.6),
+    axis.ticks = element_line(color = "#2B2B2B"),
+    axis.title = element_text(face = "bold", color = "#2B2B2B"),
+    axis.text  = element_text(color = "#2B2B2B"),
+    plot.title = element_text(face = "bold", hjust = 0.5, color = "#2B2B2B")
+  )
+```
+
+# **Dataset Preparation: Cleaned Source and Time Indexing**
+
+## **1) Choose Data Source**
+
+-   Sets `df` to `all_listings_clean` if it exists; otherwise falls back to `all_listings`.
+
+## **2) Create `month_date` (if missing)**
+
+-   If the `month_date` column doesn’t exist, it is created by parsing the string `month` (e.g., `"2024-07"`) into a real date at the first of the month using `ymd(paste0(month, "-01"))`.
+
+## **3) Order the `month` Factor by Time**
+
+-   Converts `month` to a factor ordered by `month_date`, ensuring plots and summaries follow chronological order rather than alphabetical order.
+
+```{r}
+# -------- Use cleaned data if available --------
+df <- if (exists("all_listings_clean")) all_listings_clean else all_listings
+
+# -------- Ensure month_date and ordered month factor --------
+if (!"month_date" %in% names(df)) {
+  df <- df %>% mutate(month_date = ymd(paste0(as.character(month), "-01")))
+}
+df <- df %>%
+  mutate(month = factor(as.character(month),
+                        levels = unique(arrange(., month_date)$month)))
+
+
+# Use cleaned dataset if available
+df <- if (exists("all_listings_clean")) all_listings_clean else all_listings
+
+# Ensure superhost_flag exists
+df <- df %>%
+  mutate(superhost_flag = case_when(
+    is.logical(host_is_superhost) ~ host_is_superhost,
+    is.character(host_is_superhost) ~ tolower(host_is_superhost) %in% c("true","t","1","yes"),
+    TRUE ~ NA
+  ))
+```
+
+# **Regional Price Comparison: Auckland vs Queenstown-Lakes-District**
+
+## **1) Data Filtering**
+
+-   Selects only listings from **Auckland** and **Queenstown-Lakes-District**.
+-   Removes rows with missing `price`.
+
+## **2) Aggregation**
+
+-   Groups data by `month` and `region`.
+-   Calculates the **average price** per group.
+
+## **3) Visualization**
+
+-   **Line chart** comparing monthly average prices for both regions.
+-   Uses color to differentiate regions and points to mark each month's value.
+-   X-axis labels rotated for readability.
+
+```{r}
+
+df <- if (exists("all_listings_clean")) all_listings_clean else all_listings
+
+# Top parent regions by listing count (Top 15)
+top_parent_regions <- df %>%
+  count(region_parent_name, sort = TRUE) %>%
+  slice_head(n = 5)
+
+# Custom Airbnb color palette
+custom_colors <- c("#ff5a5f", "#cc484c", "#7f2d2f", "#4c1b1c", "#190909")
+
+# Top parent regions by listing count (Top 5, descending order)
+top_parent_regions <- df %>%
+  count(region_parent_name, sort = TRUE) %>%
+  slice_head(n = 5) %>%
+  arrange(desc(n)) %>%  # ensure descending order
+  mutate(region_parent_name = factor(region_parent_name, levels = region_parent_name))
+
+ggplot(top_parent_regions, aes(x = region_parent_name, y = n, fill = region_parent_name)) +
+  geom_col() +
+  geom_text(aes(label = n, color = region_parent_name), 
+            vjust = -0.5, size = 4, fontface = "bold") +
+  scale_fill_manual(values = custom_colors) +
+  scale_color_manual(values = custom_colors) +  # label color matches bar
+  labs(x = "Parent Region", y = "Listings") +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    plot.title = element_blank(),
+    axis.text.x = element_text(face = "bold"),
+    axis.text.y = element_text(face = "bold")
+  )
+
+
+```
+
+## Correlation Matrix of Review Score Components
+
+This section calculates pairwise correlations between different review score variables, reshapes the results into a long format, and visualizes them as a heatmap. The color gradient highlights the strength and direction of the relationships.
+
+```{r}
+
+# ============================
+# 2) Correlation matrix of review score components
+# ============================
+score_vars <- c("review_scores_accuracy", "review_scores_cleanliness",
+                "review_scores_value", "review_scores_checkin",
+                "review_scores_communication", "review_scores_location",
+                "review_scores_rating")
+
+score_data <- df %>%
+  select(all_of(score_vars)) %>%
+  na.omit()
+
+cor_matrix <- cor(score_data, use = "pairwise.complete.obs")
+
+# Melt for ggplot heatmap
+melted_cor <- melt(cor_matrix)
+
+ggplot(melted_cor, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "red", high = "darkgreen", mid = "white",
+                       midpoint = 0, limit = c(-1, 1)) +
+  labs(title = "Correlation Matrix of Review Score Components", x = "", y = "") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+## Average Price Over the Year: Auckland vs Queenstown-Lakes
+
+This section filters the dataset for Auckland and Queenstown-Lakes District listings, calculates the average price per month for each region, and plots them together on a line chart with points to compare price trends over time.
+
+```{r}
+# Prepare data
+avg_price_region <- all_listings %>%
+  filter(region_parent_name %in% c("Auckland", "Queenstown-Lakes District"),
+         !is.na(price)) %>%
+  group_by(month_date, region_parent_name) %>%
+  summarise(mean_price = mean(price, na.rm = TRUE), .groups = "drop")
+
+# Plot both on the same chart
+ggplot(avg_price_region, aes(x = month_date, y = mean_price, color = region_parent_name, group = region_parent_name)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(title = "Average Price Over the Year: Auckland vs Queenstown-Lakes",
+       x = "Month", y = "Average Price", color = "Region") +
+  theme_minimal()
+```
+
+## Price Distribution and Outlier Detection: Auckland vs Queenstown-Lakes District
+
+This section focuses on comparing the overall price distribution between Auckland and Queenstown-Lakes District, while also highlighting outliers.
+
+1.  **Data Filtering**\
+    The dataset is filtered to include only listings from Auckland and Queenstown-Lakes District, excluding entries with missing prices.
+
+2.  **Outlier Calculation**\
+    For each month and region, the first quartile (Q1), third quartile (Q3), and interquartile range (IQR) are calculated. Outliers are identified as values below Q1 − 1.5 × IQR or above Q3 + 1.5 × IQR.
+
+3.  **Visualization**
+
+    -   **First Plot:** Displays a standard boxplot for each region, with outliers marked in a distinct color.\
+    -   **Second Plot:** Hides default outliers in the boxplot and overlays custom-colored points for detected outliers, making them visually distinct for each region.\
+    -   Colors are customized for both regions to match a professional, contrasting palette, and axis and title styling improves readability.
+
+```{r}
+df2 <- all_listings %>%
+  filter(region_parent_name %in% c("Auckland", "Queenstown-Lakes District"),
+         !is.na(price))
+
+# Extract outliers for each group
+outliers_df <- df2 %>%
+  group_by(month, region_parent_name) %>%
+  mutate(Q1 = quantile(price, 0.25),
+         Q3 = quantile(price, 0.75),
+         IQR = Q3 - Q1,
+         is_outlier = price < (Q1 - 1.5 * IQR) | price > (Q3 + 1.5 * IQR)) %>%
+  filter(is_outlier) %>%
+  ungroup()
+
+ggplot(df2, aes(x = region_parent_name, y = price, fill = region_parent_name)) +
+  geom_boxplot(outlier.colour = "#FF5A5F", outlier.shape = 16, outlier.size = 2) +
+  scale_fill_manual(values = c("Auckland" = "#00A699", "Queenstown-Lakes District" = "#FC642D")) +
+  labs(
+    title = "Overall Price Distribution: Auckland vs Queenstown-Lakes District",
+    x = "Region", y = "Price"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", hjust = 0.5, color = "#484848"),
+    axis.text = element_text(color = "#484848"),
+    axis.title = element_text(face = "bold", color = "#484848"),
+    panel.grid.major = element_line(color = "#ECECEC"),
+    panel.grid.minor = element_blank()
+  )
+
+
+# Find outliers for each region
+df2_outliers <- df2 %>%
+  group_by(region_parent_name) %>%
+  mutate(
+    Q1 = quantile(price, 0.25, na.rm = TRUE),
+    Q3 = quantile(price, 0.75, na.rm = TRUE),
+    IQR = Q3 - Q1,
+    is_outlier = price < (Q1 - 1.5 * IQR) | price > (Q3 + 1.5 * IQR)
+  ) %>%
+  filter(is_outlier)
+
+ggplot(df2, aes(x = region_parent_name, y = price, fill = region_parent_name)) +
+  geom_boxplot(outlier.shape = NA) +  # hide default outliers
+  geom_point(data = df2_outliers, 
+             aes(color = region_parent_name), 
+             shape = 16, size = 2) +      # custom colored outliers
+  scale_fill_manual(values = c("Auckland" = "#00A699", "Queenstown-Lakes District" = "#FC642D")) +
+  scale_color_manual(values = c("Auckland" = "red", "Queenstown-Lakes District" = "purple")) + # different colors
+  labs(
+    title = "Overall Price Distribution: Auckland vs Queenstown-Lakes District",
+    x = "Region", y = "Price"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", hjust = 0.5, color = "#484848"),
+    axis.text = element_text(color = "#484848"),
+    axis.title = element_text(face = "bold", color = "#484848"),
+    panel.grid.major = element_line(color = "#ECECEC"),
+    panel.grid.minor = element_blank()
+  ) +
+  scale_y_continuous(limits = c(0, NA), expand = c(0, 0))
+
+
+```
+
+ADDITIONAL EDA
+
+```{r}
+# ============================
+# 3) Segment listings by price tier (low, mid, high) and compare features
+# ============================
+# Calculate thresholds for tiers
+price_q <- quantile(df$price, probs = c(0.33, 0.66), na.rm = TRUE)
+
+df <- df %>%
+  mutate(price_tier = case_when(
+    price <= price_q[1] ~ "Low",
+    price <= price_q[2] ~ "Mid",
+    TRUE ~ "High"
+  ))
+
+# Count listings per tier
+tier_counts <- df %>% count(price_tier)
+
+ggplot(tier_counts, aes(x = price_tier, y = n, fill = price_tier)) +
+  geom_col() +
+  labs(title = "Listing Count by Price Tier", x = "Price Tier", y = "Count of Listings") +
+  scale_fill_manual(values = c("Low" = "skyblue", "Mid" = "orange", "High" = "tomato")) +
+  theme_minimal()
+
+# Compare features: average accommodates, rating, availability_30 by tier
+tier_summary <- df %>%
+  group_by(price_tier) %>%
+  summarise(
+    avg_accommodates = mean(accommodates, na.rm = TRUE),
+    avg_rating = mean(review_scores_rating, na.rm = TRUE),
+    avg_avail30 = mean(availability_30, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(tier_summary)
+
+# Plot comparison: average accommodates per tier
+ggplot(tier_summary, aes(x = price_tier, y = avg_accommodates, fill = price_tier)) +
+  geom_col() +
+  labs(title = "Average Accommodates by Price Tier", x = "Price Tier", y = "Average Accommodates") +
+  scale_fill_manual(values = c("Low" = "skyblue", "Mid" = "orange", "High" = "tomato")) +
+  theme_minimal()
+
+```
+
+Availability vs Price
+
+```{r}
+# ============================
+# 2) Availability vs Price
+# ============================
+ggplot(df, aes(x = availability_30, y = price)) +
+  geom_point(alpha = 0.3, color = "steelblue") +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(title = "Availability (30 days) vs Price", x = "Availability (30 days)", y = "Price") +
+  theme_minimal()
+```
+
+## Minimum Nights Impact on Average Price
+
+This section examines how the average price changes based on different minimum stay requirements.
+
+1.  **Bracketing Minimum Nights**\
+    Minimum nights are grouped into five categories:
+
+    -   1–3 nights\
+    -   4–7 nights\
+    -   8–14 nights\
+    -   15–30 nights\
+    -   31+ nights
+
+2.  **Aggregation**\
+    For each bracket, the average price and total listing count are calculated.
+
+3.  **Visualization**\
+    A bar chart displays the average price per bracket, showing how minimum stay policies may influence pricing patterns.
+
+```{r}
+# =============================
+# 11) Minimum nights impact
+# =============================
+# Create simple brackets
+df <- df %>%
+  mutate(min_nights_bracket = case_when(
+    minimum_nights <= 3 ~ "1-3 nights",
+    minimum_nights <= 7 ~ "4-7 nights",
+    minimum_nights <= 14 ~ "8-14 nights",
+    minimum_nights <= 30 ~ "15-30 nights",
+    TRUE ~ "31+ nights"
+  ))
+
+price_vs_min_nights <- df %>%
+  group_by(min_nights_bracket) %>%
+  summarise(avg_price = mean(price, na.rm = TRUE), count = n(), .groups = "drop") %>%
+  arrange(factor(min_nights_bracket, levels = c("1-3 nights","4-7 nights","8-14 nights","15-30 nights","31+ nights")))
+
+ggplot(price_vs_min_nights, aes(x = min_nights_bracket, y = avg_price)) +
+  geom_col(fill = "darkgreen") +
+  labs(title = "Average Price by Minimum Nights Bracket", x = "Minimum Nights Bracket", y = "Average Price") +
+  theme_minimal()
+
+
+
+```
+
+## Superhost Advantage
+
+This section compares Superhosts and Non-Superhosts in terms of both pricing and guest ratings.
+
+1.  **Data Aggregation**
+    -   Group listings by Superhost status.\
+    -   Calculate the average price, average review score, and total listing count for each group.
+2.  **Price Comparison**
+    -   A bar chart shows how the average price differs between Superhosts and Non-Superhosts.
+3.  **Rating Comparison**
+    -   Another bar chart compares the average guest ratings for both groups, highlighting potential quality differences.
+
+```{r}
+
+# Use cleaned dataset if available
+df <- if (exists("all_listings_clean")) all_listings_clean else all_listings
+
+# Ensure superhost_flag exists
+df <- df %>%
+  mutate(superhost_flag = case_when(
+    is.logical(host_is_superhost) ~ host_is_superhost,
+    is.character(host_is_superhost) ~ tolower(host_is_superhost) %in% c("true","t","1","yes"),
+    TRUE ~ NA
+  ))
+
+# ============================
+# 6) Superhost advantage
+# ============================
+
+superhost_summary <- df %>%
+  group_by(superhost_flag) %>%
+  summarise(
+    avg_price = mean(price, na.rm = TRUE),
+    avg_rating = mean(review_scores_rating, na.rm = TRUE),
+    count = n(),
+    .groups = "drop"
+  )
+
+print(superhost_summary)
+
+# Plot: Average price by superhost status
+ggplot(superhost_summary, aes(x = factor(superhost_flag, labels = c("Non-Superhost", "Superhost")), y = avg_price, fill = superhost_flag)) +
+  geom_col() +
+  labs(title = "Average Price by Superhost Status", x = "Superhost", y = "Average Price") +
+  theme_minimal() +
+  scale_fill_manual(values = c("tomato", "darkgreen"), guide = FALSE)
+
+# Plot: Average rating by superhost status
+ggplot(superhost_summary, aes(x = factor(superhost_flag, labels = c("Non-Superhost", "Superhost")), y = avg_rating, fill = superhost_flag)) +
+  geom_col() +
+  labs(title = "Average Rating by Superhost Status", x = "Superhost", y = "Average Rating") +
+  theme_minimal() +
+  scale_fill_manual(values = c("tomato", "darkgreen"), guide = FALSE)
+
+```
+
+## Seasonality Detection
+
+This section identifies seasonal trends in pricing and demand.
+
+1.  **Top & Bottom Months**
+    -   Finds the 3 months with the highest and lowest average prices.\
+    -   Finds the 3 months with the lowest and highest short-term availability (30-day).
+2.  **Visual Trend Analysis**
+    -   Plots both average price and 30-day availability over time to reveal seasonal demand and pricing patterns.
+
+```{r}
+# =======================
+# 3) SEASONALITY DETECTION
+# =======================
+
+# Top/Bottom 3 months by demand-related variables
+cat("\nTop 3 high-price months (mean):\n")
+print(monthly_summary %>% arrange(desc(mean_price)) %>% select( mean_price) %>% head(3))
+
+cat("\nBottom 3 low-price months (mean):\n")
+print(monthly_summary %>% arrange(mean_price) %>% select(month_date, mean_price) %>% head(3))
+
+cat("\nTop 3 tighter-demand months (low availability_30):\n")
+print(monthly_summary %>% arrange(avg_avail30) %>% select(month_date, avg_avail30) %>% head(3))
+
+cat("\nBottom 3 looser-demand months (high availability_30):\n")
+print(monthly_summary %>% arrange(desc(avg_avail30)) %>% select(month_date, avg_avail30) %>% head(3))
+
+# Plot mean_price and avg_avail30 together for visual seasonality
+ggplot(monthly_summary, aes(x = month_date)) +
+  geom_line(aes(y = mean_price, color = "Mean Price")) +
+  geom_line(aes(y = avg_avail30, color = "Availability_30")) +
+  scale_color_manual(values = c("Mean Price" = "steelblue", "Availability_30" = "tomato")) +
+  labs(title = "Seasonality Trends", x = "Month", y = "Value", color = "Metric") +
+  theme_minimal()
+
+
+```
+
+```{r}
+
+```
